@@ -30,14 +30,14 @@ final class WC_PaymentHood_Blocks extends AbstractPaymentMethodType
             'paymenthood-checkout',
             plugins_url('assets/css/paymenthood-checkout.css', dirname(__DIR__) . '/payment-gateway.php'),
             [],
-            '1.0.0'
+            '1.0.3'
         );
 
         wp_enqueue_script(
             'wc-paymenthood-blocks-integration',
             plugins_url('src/index.js', __DIR__),
             ['wc-blocks-registry', 'wc-settings', 'wp-element', 'wp-i18n'],
-            null,
+            '1.0.2',
             true
         );
 

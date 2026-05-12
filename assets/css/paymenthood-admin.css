@@ -314,14 +314,12 @@ body {
     box-shadow: none;
 }
 
-.paymenthood-settings-card .paymenthood-provider-chip picture,
 .paymenthood-settings-card .paymenthood-provider-chip__logo,
-.paymenthood-supported-gateways-row .paymenthood-provider-chip picture,
 .paymenthood-supported-gateways-row .paymenthood-provider-chip__logo {
     display: block;
-    max-width: 59px;
-    max-height: 18px;
-    width: auto;
+    width: 59px;
+    height: 18px;
+    flex-shrink: 0;
     object-fit: contain;
 }
 

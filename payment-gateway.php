@@ -165,6 +165,7 @@ function paymenthood_init_gateway_class()
 
 			// Hook for saving settings
 			add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
+			add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'flush_checkout_methods_cache'), 20);
 			add_action('admin_init', array($this, 'guard_paymenthood_enable_route'));
 			add_action('admin_init', array($this, 'maybe_auto_enable_for_completed_setup'));
 			add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
@@ -181,11 +182,34 @@ function paymenthood_init_gateway_class()
 
 			// Handles payment state and order status on order received (thank you) page
 			add_action('woocommerce_thankyou', array($this, 'thankyou_page_handler'));
+
+			// Add sandbox badge to checkout title
+			if ($this->testmode) {
+				add_filter('woocommerce_gateway_title', array($this, 'add_sandbox_badge_to_title'), 10, 2);
+			}
 		}
 
 		protected function get_active_environment_label(): string
 		{
 			return $this->testmode ? 'sandbox' : 'live';
+		}
+
+		protected function flush_checkout_methods_cache(string $sandbox_app_id = '', string $live_app_id = ''): void
+		{
+			$settings = get_option('woocommerce_' . $this->id . '_settings', array());
+
+			$ids_to_flush = array_filter(array_unique(array(
+				$sandbox_app_id,
+				$live_app_id,
+				$settings['sandbox_app_id'] ?? '',
+				$settings['live_app_id'] ?? '',
+			)));
+
+			foreach ($ids_to_flush as $app_id) {
+				delete_transient('paymenthood_profile_checkout_methods_' . md5($app_id));
+			}
+
+			$this->log('Checkout methods cache flushed', 'info', array('app_ids' => array_values($ids_to_flush)));
 		}
 
 		protected function get_missing_active_environment_settings(): array
@@ -632,6 +656,55 @@ function paymenthood_init_gateway_class()
 			);
 		}
 
+		protected function get_provider_icon_data_uri(string $icon_url): string
+		{
+			if ($icon_url === '' || !$this->is_allowed_provider_icon_url($icon_url)) {
+				return '';
+			}
+
+			$cache_key = 'paymenthood_icon_proxy_' . md5($icon_url);
+			$cached = get_transient($cache_key);
+
+			if (is_array($cached) && !empty($cached['content_type']) && isset($cached['body'])) {
+				return 'data:' . $cached['content_type'] . ';base64,' . $cached['body'];
+			}
+
+			$response = wp_remote_get(
+				$icon_url,
+				array(
+					'timeout' => 20,
+					'redirection' => 3,
+				)
+			);
+
+			$status_code = wp_remote_retrieve_response_code($response);
+			$body = wp_remote_retrieve_body($response);
+			$content_type = (string) wp_remote_retrieve_header($response, 'content-type');
+
+			if (is_wp_error($response) || $status_code !== 200 || $body === '') {
+				$this->log('Provider icon data URI request failed', 'warning', array(
+					'icon_url' => $icon_url,
+					'status_code' => $status_code,
+				));
+
+				return '';
+			}
+
+			$content_type = $this->detect_provider_icon_content_type($icon_url, $content_type, $body);
+			$encoded_body = base64_encode($body);
+
+			set_transient(
+				$cache_key,
+				array(
+					'content_type' => $content_type,
+					'body' => $encoded_body,
+				),
+				6 * HOUR_IN_SECONDS
+			);
+
+			return 'data:' . $content_type . ';base64,' . $encoded_body;
+		}
+
 		protected function is_allowed_provider_icon_url(string $icon_url): bool
 		{
 			$parts = wp_parse_url($icon_url);
@@ -742,23 +815,20 @@ function paymenthood_init_gateway_class()
 			exit;
 		}
 
+		public function add_sandbox_badge_to_title($title, $gateway_id)
+		{
+			if ($gateway_id !== $this->id) {
+				return $title;
+			}
+
+			return esc_html($title) . ' <span class="paymenthood-sandbox-badge paymenthood-sandbox-badge--inline">Sandbox</span>';
+		}
+
 		public function payment_fields()
 		{
-			$logo_url = $this->get_logo_url();
-			$description = $this->description ? $this->description : 'Pay securely using PaymentHood hosted checkout.';
 			$supported_methods = $this->get_supported_checkout_methods_for_display();
 			?>
 			<div class="paymenthood-checkout-card paymenthood-checkout-card--classic">
-				<div class="paymenthood-checkout-card__topline">Secure hosted checkout</div>
-				<div class="paymenthood-checkout-card__header">
-					<?php if ($logo_url) : ?>
-						<img class="paymenthood-checkout-card__logo" src="<?php echo esc_url($logo_url); ?>" alt="PaymentHood logo">
-					<?php endif; ?>
-					<div>
-						<h3 class="paymenthood-checkout-card__title">Pay with PaymentHood</h3>
-						<p class="paymenthood-checkout-card__description"><?php echo esc_html($description); ?></p>
-					</div>
-				</div>
 				<?php if (!empty($supported_methods)) : ?>
 					<?php $this->render_supported_provider_chips($supported_methods); ?>
 				<?php endif; ?>
@@ -781,14 +851,22 @@ function paymenthood_init_gateway_class()
 							<span class="paymenthood-provider-chip__label">Credit card</span>
 						</div>
 					<?php else : ?>
-						<?php $icon_url = !empty($method['icon_light']) ? $method['icon_light'] : ($method['icon_dark'] ?? ''); ?>
-						<?php $icon_url = $this->get_provider_icon_proxy_url($icon_url); ?>
-						<div class="paymenthood-provider-chip" title="<?php echo esc_attr($method['label'] ?? ''); ?>">
-							<?php if (!empty($icon_url)) : ?>
-								<img class="paymenthood-provider-chip__logo" src="<?php echo esc_url($icon_url); ?>" alt="<?php echo esc_attr($method['label'] ?? ''); ?>" onerror="this.closest('.paymenthood-provider-chip').remove();">
-							<?php else : ?>
-								<?php continue; ?>
+						<?php
+						$label = (string) ($method['label'] ?? '');
+						$icon_url = !empty($method['icon_light']) ? (string) $method['icon_light'] : (string) ($method['icon_dark'] ?? '');
+						if ($label === '' && $icon_url === '') {
+							continue;
+						}
+						?>
+						<div class="paymenthood-provider-chip" title="<?php echo esc_attr($label); ?>">
+							<?php if ($icon_url !== '') : ?>
+								<img class="paymenthood-provider-chip__logo"
+									src="<?php echo esc_url($icon_url); ?>"
+									alt="<?php echo esc_attr($label); ?>"
+									width="84" height="26"
+									onerror="this.style.display='none';var lb=this.parentNode.querySelector('.paymenthood-provider-chip__label');if(lb)lb.style.display='';">
 							<?php endif; ?>
+							<span class="paymenthood-provider-chip__label" <?php if ($icon_url !== '') : ?>style="display:none"<?php endif; ?>><?php echo esc_html($label); ?></span>
 						</div>
 					<?php endif; ?>
 				<?php endforeach; ?>
@@ -798,12 +876,25 @@ function paymenthood_init_gateway_class()
 
 		public function get_supported_checkout_methods_for_display()
 		{
-			return $this->app_service->get_supported_checkout_methods(
+			$methods = $this->app_service->get_payment_profiles_checkout_methods(
 				$this->app_id,
-				$this->token,
-				$this->hosted_page_id,
-				$this->testmode
+				$this->token
 			);
+
+			foreach ($methods as &$method) {
+				if (($method['type'] ?? '') === 'credit_card') {
+					continue;
+				}
+				if (!empty($method['icon_light'])) {
+					$method['icon_light'] = $this->get_provider_icon_proxy_url($method['icon_light']);
+				}
+				if (!empty($method['icon_dark'])) {
+					$method['icon_dark'] = $this->get_provider_icon_proxy_url($method['icon_dark']);
+				}
+			}
+			unset($method);
+
+			return $methods;
 		}
 
 		protected function get_admin_all_providers_for_display(): array
@@ -870,7 +961,7 @@ function paymenthood_init_gateway_class()
 				'paymenthood-admin-settings',
 				plugins_url('assets/css/paymenthood-admin.css', __FILE__),
 				array(),
-				'1.0.7'
+				'1.0.8'
 			);
 
 			if ($this->is_paymenthood_payments_list_page()) {
@@ -1016,7 +1107,7 @@ JS;
 				'paymenthood-checkout',
 				plugins_url('assets/css/paymenthood-checkout.css', __FILE__),
 				array(),
-				'1.0.0'
+				'1.0.3'
 			);
 		}
 
@@ -1127,6 +1218,7 @@ JS;
 			update_option('paymenthood_setup_auto_enabled', '1');
 
 			$this->log('App details saved; gateway not auto-enabled', 'info');
+			$this->flush_checkout_methods_cache($app_detail['sandbox_app_id'], $app_detail['live_app_id']);
 
 			// Set payment webhook in payment service
 			$webhook_url = home_url('/?wc-api=payment_webhook');

@@ -228,6 +228,7 @@ class PaymentHood_App_Service
 
                 $methods[] = array(
                     'type' => 'provider_hosted_page',
+                    'label' => $provider_name,
                     'icon_light' => $icon_light,
                     'icon_dark' => $icon_dark,
                 );
@@ -340,6 +341,113 @@ class PaymentHood_App_Service
         }
 
         return $deduplicated;
+    }
+
+    /**
+     * Fetch payment profile checkout methods from GET /api/apps/{appId}/payment-profiles/payment-checkout-methods.
+     * Filters to CreditCard and ProviderHostedPage groups only.
+     * Result is cached for 15 minutes.
+     *
+     * @param string $app_id App ID.
+     * @param string $token  Bearer token for this app.
+     * @return array Normalized method entries.
+     */
+    public function get_payment_profiles_checkout_methods(string $app_id, string $token): array
+    {
+        if ($app_id === '' || $token === '') {
+            return array();
+        }
+
+        $cache_key = 'paymenthood_profile_checkout_methods_' . md5($app_id);
+        $cached    = get_transient($cache_key);
+
+        if (is_array($cached)) {
+            $this->log('Returning cached payment profile checkout methods', 'info', array(
+                'app_id'        => $app_id,
+                'methods_count' => count($cached),
+            ));
+
+            return $cached;
+        }
+
+        $request_url = $this->base_url . '/api/apps/' . rawurlencode($app_id) . '/payment-profiles/payment-checkout-methods';
+
+        $this->log('Requesting payment profile checkout methods from PaymentHood API', 'info', array(
+            'app_id'      => $app_id,
+            'request_url' => $request_url,
+        ));
+
+        $response = wp_remote_get(
+            $request_url,
+            array(
+                'timeout' => 20,
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $token,
+                ),
+            )
+        );
+
+        $status_code = wp_remote_retrieve_response_code($response);
+        $raw_body    = wp_remote_retrieve_body($response);
+        $body        = json_decode($raw_body, true);
+
+        if (is_wp_error($response) || $status_code !== 200 || !is_array($body)) {
+            $this->log('Error fetching payment profile checkout methods', 'error', array(
+                'app_id'      => $app_id,
+                'status_code' => $status_code,
+                'body'        => $raw_body,
+            ));
+
+            return array();
+        }
+
+        $methods = array();
+
+        foreach ($body as $group) {
+            $checkout_method = $group['checkoutMethod'] ?? '';
+
+            if ($checkout_method === 'CreditCard') {
+                $methods[] = array(
+                    'type'       => 'credit_card',
+                    'label'      => 'Credit card',
+                    'icon_light' => '',
+                    'icon_dark'  => '',
+                );
+                continue;
+            }
+
+            if ($checkout_method !== 'ProviderHostedPage' || empty($group['paymentCheckoutMethodItems']) || !is_array($group['paymentCheckoutMethodItems'])) {
+                continue;
+            }
+
+            foreach ($group['paymentCheckoutMethodItems'] as $item) {
+                $provider      = $item['paymentProfile']['paymentProvider'] ?? array();
+                $provider_name = $provider['provider'] ?? '';
+                $icon_light    = $provider['iconUri1'] ?? '';
+                $icon_dark     = $provider['iconUri2'] ?? '';
+
+                if ($provider_name === '' || ($icon_light === '' && $icon_dark === '')) {
+                    continue;
+                }
+
+                $methods[] = array(
+                    'type'       => 'provider_hosted_page',
+                    'label'      => $provider_name,
+                    'icon_light' => $icon_light,
+                    'icon_dark'  => $icon_dark,
+                );
+            }
+        }
+
+        $methods = $this->deduplicate_checkout_methods($methods);
+        set_transient($cache_key, $methods, 15 * MINUTE_IN_SECONDS);
+
+        $this->log('Payment profile checkout methods normalized', 'info', array(
+            'app_id'        => $app_id,
+            'methods_count' => count($methods),
+        ));
+
+        return $methods;
     }
 
     /**
