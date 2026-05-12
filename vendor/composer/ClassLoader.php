@@ -66,7 +66,6 @@ class ClassLoader
     /**
      * List of PSR-0 prefixes
      *
-     * Structured as array('F (first letter)' => array('Foo\Bar (full prefix)' => array('path', 'path2')))
      *
      * @var array<string, array<string, list<string>>>
      */

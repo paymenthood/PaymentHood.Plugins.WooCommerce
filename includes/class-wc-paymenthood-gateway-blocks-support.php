@@ -26,6 +26,13 @@ final class WC_PaymentHood_Blocks extends AbstractPaymentMethodType
 
     public function get_payment_method_script_handles()
     {
+        wp_enqueue_style(
+            'paymenthood-checkout',
+            plugins_url('assets/css/paymenthood-checkout.css', dirname(__DIR__) . '/payment-gateway.php'),
+            [],
+            '1.0.0'
+        );
+
         wp_enqueue_script(
             'wc-paymenthood-blocks-integration',
             plugins_url('src/index.js', __DIR__),
@@ -41,7 +48,9 @@ final class WC_PaymentHood_Blocks extends AbstractPaymentMethodType
                 'title' => $settings['title'] ?? 'PaymentHood',
                 'description' => $settings['description'] ?? 'Pay securely using PaymentHood.',
                 'ariaLabel' => $settings['title'] ?? 'PaymentHood',
-
+                'logoUrl' => $this->get_logo_url(),
+                'isSandbox' => ($settings['testmode'] ?? 'yes') === 'yes',
+                'supportedMethods' => $this->gateway ? $this->gateway->get_supported_checkout_methods_for_display() : [],
             ]) . ';',
             'before'
         );
@@ -56,6 +65,9 @@ final class WC_PaymentHood_Blocks extends AbstractPaymentMethodType
             'title' => $settings['title'] ?? 'PaymentHood',
             'description' => $settings['description'] ?? 'Pay securely using PaymentHood.',
             'ariaLabel' => $settings['title'] ?? 'PaymentHood',
+            'logoUrl' => $this->get_logo_url(),
+            'isSandbox' => ($settings['testmode'] ?? 'yes') === 'yes',
+            'supportedMethods' => $this->gateway ? $this->gateway->get_supported_checkout_methods_for_display() : [],
             'supports' => ['products', 'subscriptions', 'default', 'virtual'],
 
         ];
@@ -70,5 +82,26 @@ final class WC_PaymentHood_Blocks extends AbstractPaymentMethodType
             null,
             true
         );
+    }
+
+    protected function get_logo_url()
+    {
+        $base_file = dirname(__DIR__) . '/payment-gateway.php';
+        $logo_candidates = [
+            'assets/images/paymenthood-blue.png',
+            'assets/images/paymenthood-logo.svg',
+            'assets/images/paymenthood-logo.png',
+            'assets/images/paymenthood.webp',
+        ];
+
+        foreach ($logo_candidates as $relative_path) {
+            $absolute_path = dirname(__DIR__) . '/' . $relative_path;
+
+            if (file_exists($absolute_path)) {
+                return plugins_url($relative_path, $base_file);
+            }
+        }
+
+        return '';
     }
 }

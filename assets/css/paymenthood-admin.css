@@ -1,0 +1,563 @@
+body {
+    background: #f0f0f1;
+}
+
+/* Tighten vertical spacing between standard WooCommerce settings rows */
+.woocommerce_page_wc-settings .form-table tr {
+    vertical-align: top;
+}
+
+.woocommerce_page_wc-settings .form-table th,
+.woocommerce_page_wc-settings .form-table td {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.paymenthood-error {
+    max-width: 600px;
+    margin: 80px auto;
+    background: #fff;
+    padding: 30px;
+    border-left: 4px solid #d63638;
+}
+
+.paymenthood-error pre {
+    background: #f6f7f7;
+    padding: 12px;
+    overflow: auto;
+}
+
+.paymenthood-settings-card {
+    border: 1px solid #d0d7de;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #ffffff 0%, #f7f8f4 100%);
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(25, 42, 28, 0.08);
+    max-width: 760px;
+}
+
+.paymenthood-brand-lockup {
+    display: inline-block;
+    margin-bottom: 18px;
+}
+
+.paymenthood-brand-lockup__mark {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #162218 0%, #294331 100%);
+    color: #f7f8f4;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.paymenthood-brand-lockup__logo {
+    display: block;
+    width: auto;
+    max-width: 120px;
+    max-height: 36px;
+    object-fit: contain;
+}
+
+.paymenthood-settings-card.is-complete {
+    border-color: #7ab78d;
+}
+
+.paymenthood-settings-card.is-pending {
+    border-color: #e0b252;
+}
+
+.paymenthood-settings-card__compact {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 18px;
+    border-radius: 0;
+    background:
+        radial-gradient(circle at top right, rgba(248, 214, 120, 0.24), transparent 34%),
+        linear-gradient(135deg, #17271a 0%, #294331 62%, #35563f 100%);
+}
+
+.paymenthood-settings-card__compact-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.paymenthood-settings-card__compact-label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    margin-bottom: 10px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #eef6f0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.paymenthood-settings-card__compact-title {
+    margin: 0;
+    color: #ffffff;
+    font-size: 18px;
+    line-height: 1.2;
+}
+
+.paymenthood-settings-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.paymenthood-settings-card__actions--below-banner {
+    padding: 10px 18px 14px;
+}
+
+.paymenthood-settings-card__empty-state {
+    margin: 0;
+    color: #5f6b63;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.paymenthood-settings-card__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 18px;
+}
+
+.paymenthood-settings-card__eyebrow {
+    display: inline-block;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #5f6b63;
+}
+
+.paymenthood-settings-card h3 {
+    margin: 0 0 6px;
+    font-size: 24px;
+    line-height: 1.2;
+    color: #162218;
+}
+
+.paymenthood-settings-card p {
+    margin: 0;
+    max-width: 54ch;
+    color: #4d5a51;
+}
+
+.paymenthood-settings-card__button {
+    white-space: nowrap;
+    min-height: 40px;
+    padding-inline: 18px;
+}
+
+.paymenthood-settings-card__button--secondary {
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+}
+
+.paymenthood-settings-card__button--secondary:hover,
+.paymenthood-settings-card__button--secondary:focus {
+    border-color: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+}
+
+/*
+ * Dark-background pill for the PaymentHood logo wherever WooCommerce renders it
+ * as a plain <img> in the admin (Payments list, gateway table rows, etc.).
+ * Needed because the logo asset has white text on a transparent background.
+ */
+
+
+/* ── PaymentHood logo size override in WooCommerce Payments list ──
+ * WC sets .woocommerce-list__item-image to width:40px/max-height:40px, which
+ * squashes a wide text logo. #id selector beats .class.class specificity.
+ */
+#paymenthood .woocommerce-list__item-image {
+    width: auto;
+    max-width: 160px;
+    max-height: 48px;
+    height: auto;
+    border-radius: 4px;
+    object-fit: contain;
+}
+
+/* ── Provider logo strip injected into the WooCommerce Payments list row ── */
+.paymenthood-provider-strip-admin {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.paymenthood-env-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    line-height: 1;
+    margin-right: 2px;
+}
+
+.paymenthood-env-badge--live {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+.paymenthood-env-badge--sandbox {
+    background: #fef9c3;
+    color: #854d0e;
+    border: 1px solid #fde68a;
+}
+
+.paymenthood-provider-strip-admin__icon {
+    display: block;
+    width: auto;
+    height: 20px;
+    max-width: 36px;
+    border-radius: 4px;
+    background: #f3f4f5;
+    border: 1px solid #e2e4e7;
+    object-fit: contain;
+    padding: 2px 3px;
+}
+
+.paymenthood-provider-strip-admin__overflow {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: #f3f4f5;
+    border: 1px solid #e2e4e7;
+    color: #50575e;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.paymenthood-supported-gateways-row {
+    border: 1px solid #d0d7de;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #ffffff 0%, #f7f8f4 100%);
+    box-shadow: 0 10px 30px rgba(25, 42, 28, 0.08);
+    max-width: 760px;
+    padding: 18px 20px;
+}
+
+.paymenthood-supported-gateways-row__empty {
+    margin: 0;
+    color: #5f6b63;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.paymenthood-settings-card .paymenthood-provider-strip,
+.paymenthood-supported-gateways-row .paymenthood-provider-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.paymenthood-provider-strip.paymenthood-provider-strip--grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 172px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 2px 8px 6px 2px;
+}
+
+.paymenthood-provider-strip--grid .paymenthood-provider-chip {
+    width: 100%;
+    min-width: 0;
+}
+
+.paymenthood-settings-card .paymenthood-provider-chip,
+.paymenthood-supported-gateways-row .paymenthood-provider-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    min-width: 50px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.paymenthood-settings-card .paymenthood-provider-chip picture,
+.paymenthood-settings-card .paymenthood-provider-chip__logo,
+.paymenthood-supported-gateways-row .paymenthood-provider-chip picture,
+.paymenthood-supported-gateways-row .paymenthood-provider-chip__logo {
+    display: block;
+    max-width: 59px;
+    max-height: 18px;
+    width: auto;
+    object-fit: contain;
+}
+
+.paymenthood-settings-card .paymenthood-provider-chip--card,
+.paymenthood-supported-gateways-row .paymenthood-provider-chip--card {
+    gap: 10px;
+    padding-inline: 16px;
+}
+
+.paymenthood-settings-card .paymenthood-provider-chip__card-icon,
+.paymenthood-supported-gateways-row .paymenthood-provider-chip__card-icon {
+    position: relative;
+    width: 28px;
+    height: 18px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #1e3f2a 0%, #2f5a39 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.paymenthood-settings-card .paymenthood-provider-chip__card-icon::after,
+.paymenthood-supported-gateways-row .paymenthood-provider-chip__card-icon::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 5px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.68);
+}
+
+@media (max-width: 960px) {
+    .paymenthood-provider-strip--grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 782px) {
+    .paymenthood-provider-strip--grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.paymenthood-settings-card .paymenthood-provider-chip__label,
+.paymenthood-supported-gateways-row .paymenthood-provider-chip__label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #223128;
+    white-space: nowrap;
+}
+
+.paymenthood-settings-card .paymenthood-provider-chip__label--fallback {
+    display: none;
+}
+
+.paymenthood-settings-card .paymenthood-provider-chip.is-image-missing {
+    padding-inline: 16px;
+}
+
+.paymenthood-settings-card .paymenthood-provider-chip.is-image-missing .paymenthood-provider-chip__label--fallback {
+    display: inline;
+}
+
+.paymenthood-settings-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    max-width: 760px;
+    padding: 4px 0;
+}
+
+.paymenthood-settings-actions__button {
+    min-height: 40px;
+    padding-inline: 18px;
+}
+
+/* ── Environment setup cards (sandbox + live) ── */
+.paymenthood-env-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    max-width: 760px;
+}
+
+.paymenthood-env-card {
+    border: 1px solid #d0d7de;
+    border-radius: 16px;
+    background: #ffffff;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(25, 42, 28, 0.07);
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.paymenthood-env-card:hover {
+    box-shadow: 0 8px 28px rgba(25, 42, 28, 0.12);
+    transform: translateY(-1px);
+}
+
+.paymenthood-env-card--complete {
+    border-color: #86efac;
+}
+
+.paymenthood-env-card--pending {
+    border-color: #fcd34d;
+}
+
+.paymenthood-env-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+}
+
+.paymenthood-env-card--sandbox .paymenthood-env-card__header {
+    background: radial-gradient(circle at top right, rgba(251, 191, 36, 0.25), transparent 52%),
+                linear-gradient(135deg, #78350f 0%, #b45309 60%, #d97706 100%);
+}
+
+.paymenthood-env-card--live .paymenthood-env-card__header {
+    background: radial-gradient(circle at top right, rgba(134, 239, 172, 0.2), transparent 52%),
+                linear-gradient(135deg, #17271a 0%, #294331 60%, #35563f 100%);
+}
+
+.paymenthood-env-card__badge {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.paymenthood-env-card__status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.paymenthood-env-card--complete .paymenthood-env-card__status-dot {
+    background: #4ade80;
+    box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.35);
+}
+
+.paymenthood-env-card--pending .paymenthood-env-card__status-dot {
+    background: #fbbf24;
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.35);
+}
+
+.paymenthood-env-card__body {
+    padding: 16px 18px 12px;
+    flex: 1;
+}
+
+.paymenthood-env-card__name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #162218;
+    margin: 0 0 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.paymenthood-env-card__status-text {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+}
+
+.paymenthood-env-card--complete .paymenthood-env-card__status-text {
+    color: #16a34a;
+}
+
+.paymenthood-env-card--pending .paymenthood-env-card__status-text {
+    color: #b45309;
+}
+
+.paymenthood-env-card__status-icon {
+    flex-shrink: 0;
+    vertical-align: middle;
+}
+
+.paymenthood-env-card__footer {
+    padding: 4px 18px 18px;
+}
+
+.paymenthood-env-card__action {
+    display: block;
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+    min-height: 38px;
+    line-height: 36px;
+    padding-inline: 14px;
+    border-radius: 10px !important;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.paymenthood-env-card__error {
+    padding: 8px 0 4px;
+    color: #5f6b63;
+    font-size: 12px;
+    line-height: 1.5;
+    font-style: italic;
+}
+
+@media (max-width: 782px) {
+    .paymenthood-env-cards {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 782px) {
+    .paymenthood-settings-card__compact {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .paymenthood-settings-card__actions {
+        justify-content: flex-start;
+    }
+
+    .paymenthood-settings-actions {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .paymenthood-settings-card__header {
+        flex-direction: column;
+    }
+}
