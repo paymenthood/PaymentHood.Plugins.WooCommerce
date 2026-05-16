@@ -61,8 +61,9 @@ class PaymentHood_Payment_Service
 
         if (is_wp_error($response) || $status_code !== 200) {
             $this->log('Error in fetching payment details', 'error', array(
-                'status_code' => $status_code,
-                'body' => $body,
+                'reference_id' => $order_id,
+                'status_code'  => $status_code,
+                'body'         => $body,
             ));
 
             if (is_wp_error($response)) {
@@ -101,26 +102,54 @@ class PaymentHood_Payment_Service
         return $body;
     }
 
-    public function refund_payment(string $app_id, string $token, string $payment_id)
+    public function refund_payment(string $app_id, string $token, string $payment_id, string $description = '')
     {
+        $url = $this->base_url . '/api/v1/apps/' . rawurlencode($app_id) . '/payments/' . rawurlencode($payment_id) . '/refund';
+
+        if ($description !== '') {
+            $url .= '?description=' . rawurlencode($description);
+        }
+
+        $token_preview = strlen($token) > 8
+            ? substr($token, 0, 4) . '...' . substr($token, -4)
+            : '(short)';
+
+        $this->log('Refund API request', 'info', array(
+            'url'           => $url,
+            'payment_id'    => $payment_id,
+            'app_id'        => $app_id,
+            'token_preview' => $token_preview,
+            'description'   => $description,
+        ));
+
         $response = wp_remote_post(
-            $this->base_url . '/api/v1/apps/' . rawurlencode($app_id) . '/payments/' . rawurlencode($payment_id) . '/refund',
+            $url,
             array(
                 'timeout' => 30,
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $token,
-                    'Content-Type' => 'application/json',
+                    'Content-Type'  => 'application/json',
                 ),
             )
         );
 
-        $status_code = wp_remote_retrieve_response_code($response);
-        $body = json_decode(wp_remote_retrieve_body($response), true);
+        $status_code  = wp_remote_retrieve_response_code($response);
+        $raw_body     = wp_remote_retrieve_body($response);
+        $body         = json_decode($raw_body, true);
+        $resp_headers = wp_remote_retrieve_headers($response);
+
+        $this->log('Refund API response', 'info', array(
+            'payment_id'  => $payment_id,
+            'status_code' => $status_code,
+            'body'        => $body ?? $raw_body,
+            'headers'     => is_object($resp_headers) ? $resp_headers->getAll() : (array) $resp_headers,
+        ));
 
         if (is_wp_error($response) || $status_code !== 200) {
             $this->log('Refund API error', 'error', array(
+                'payment_id'  => $payment_id,
                 'status_code' => $status_code,
-                'body' => $body,
+                'body'        => $body ?? $raw_body,
             ));
 
             if (is_wp_error($response)) {

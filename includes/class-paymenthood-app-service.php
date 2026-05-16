@@ -362,20 +362,10 @@ class PaymentHood_App_Service
         $cached    = get_transient($cache_key);
 
         if (is_array($cached)) {
-            $this->log('Returning cached payment profile checkout methods', 'info', array(
-                'app_id'        => $app_id,
-                'methods_count' => count($cached),
-            ));
-
             return $cached;
         }
 
         $request_url = $this->base_url . '/api/apps/' . rawurlencode($app_id) . '/payment-profiles/payment-checkout-methods';
-
-        $this->log('Requesting payment profile checkout methods from PaymentHood API', 'info', array(
-            'app_id'      => $app_id,
-            'request_url' => $request_url,
-        ));
 
         $response = wp_remote_get(
             $request_url,
@@ -390,12 +380,18 @@ class PaymentHood_App_Service
         $status_code = wp_remote_retrieve_response_code($response);
         $raw_body    = wp_remote_retrieve_body($response);
         $body        = json_decode($raw_body, true);
+        $error_code  = is_wp_error($response) ? $response->get_error_code() : '';
+        $error_message = is_wp_error($response) ? $response->get_error_message() : '';
+        $error_data = is_wp_error($response) ? $response->get_error_data() : null;
 
         if (is_wp_error($response) || $status_code !== 200 || !is_array($body)) {
             $this->log('Error fetching payment profile checkout methods', 'error', array(
                 'app_id'      => $app_id,
                 'status_code' => $status_code,
                 'body'        => $raw_body,
+                'wp_error_code' => $error_code,
+                'wp_error_message' => $error_message,
+                'wp_error_data' => $error_data,
             ));
 
             return array();
@@ -441,12 +437,6 @@ class PaymentHood_App_Service
 
         $methods = $this->deduplicate_checkout_methods($methods);
         set_transient($cache_key, $methods, 15 * MINUTE_IN_SECONDS);
-
-        $this->log('Payment profile checkout methods normalized', 'info', array(
-            'app_id'        => $app_id,
-            'methods_count' => count($methods),
-        ));
-
         return $methods;
     }
 
@@ -498,6 +488,50 @@ class PaymentHood_App_Service
             'app_id'             => $app_id,
             'is_setup_completed' => $body['isSetupCompleted'] ?? null,
         ));
+
+        return $body;
+    }
+
+    public function mark_as_refund(string $app_id, string $token, string $payment_id, string $description)
+    {
+        $url = $this->base_url . '/api/apps/' . rawurlencode($app_id) . '/payments/' . rawurlencode($payment_id) . '/mark-as-refund'
+            . '?description=' . rawurlencode($description);
+
+        $this->log('Mark-as-refund API request', 'warning', array(
+            'url'         => $url,
+            'payment_id'  => $payment_id,
+            'app_id'      => $app_id,
+            'token'       => $token,
+            'description' => $description,
+        ));
+
+        $response = wp_remote_post(
+            $url,
+            array(
+                'timeout' => 30,
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type'  => 'application/json',
+                ),
+            )
+        );
+
+        $status_code = wp_remote_retrieve_response_code($response);
+        $body        = json_decode(wp_remote_retrieve_body($response), true);
+
+        if (is_wp_error($response) || $status_code !== 200) {
+            $this->log('Mark-as-refund API error', 'error', array(
+                'payment_id'  => $payment_id,
+                'status_code' => $status_code,
+                'body'        => $body,
+            ));
+
+            if (is_wp_error($response)) {
+                return $response;
+            }
+
+            return new WP_Error('mark_as_refund_failed', is_array($body) ? wp_json_encode($body) : (string) $body);
+        }
 
         return $body;
     }

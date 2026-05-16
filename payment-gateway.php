@@ -180,12 +180,22 @@ function paymenthood_init_gateway_class()
 			// Admin notice on successful setup
 			add_action('admin_notices', array($this, 'render_admin_notices'));
 
+			// Show PaymentHood payment ID in the admin order edit panel
+			add_action('woocommerce_admin_order_data_after_order_details', array($this, 'render_admin_order_payment_id'));
+
+			// Show manual refund warning banner at the top of the admin order edit page
+			add_action('admin_notices', array($this, 'render_manual_refund_admin_notice'));
+
 			// Handles payment state and order status on order received (thank you) page
 			add_action('woocommerce_thankyou', array($this, 'thankyou_page_handler'));
+			add_action('woocommerce_order_details_after_order_table', array($this, 'render_paymenthood_order_payment_box'));
+			add_filter('woocommerce_available_payment_gateways', array($this, 'restrict_order_pay_gateways_to_paymenthood'), 20);
+			add_filter('woocommerce_order_needs_payment', array($this, 'prevent_terminal_paymenthood_order_payment'), 20, 3);
 
-			// Add sandbox badge to checkout title
+			// Add sandbox badge to checkout title and customer-facing order detail
 			if ($this->testmode) {
 				add_filter('woocommerce_gateway_title', array($this, 'add_sandbox_badge_to_title'), 10, 2);
+				add_filter('woocommerce_order_get_payment_method_title', array($this, 'add_sandbox_badge_to_order_payment_title'), 10, 2);
 			}
 		}
 
@@ -248,6 +258,28 @@ function paymenthood_init_gateway_class()
 		{
 			if (!$this->is_paymenthood_settings_page()) {
 				return;
+			}
+
+			if ($this->is_local_callback_base_url()) {
+				$webhook_url = $this->build_public_wc_api_url('payment_webhook');
+				?>
+				<div class="notice paymenthood-warning-notice">
+					<div class="paymenthood-warning-notice__header">
+						<span class="paymenthood-warning-notice__icon" aria-hidden="true">&#9888;</span>
+						<span class="paymenthood-warning-notice__eyebrow">Action required &mdash; Webhook unreachable on localhost</span>
+					</div>
+					<div class="paymenthood-warning-notice__body-wrap">
+						<p class="paymenthood-warning-notice__title">PaymentHood cannot receive live payment webhooks.</p>
+						<p class="paymenthood-warning-notice__body">
+							Your store is currently using a <strong>localhost callback URL</strong>. Payment webhooks cannot reach localhost from outside your machine. Use a public domain or a tunnel such as Cloudflare Tunnel or ngrok before accepting live payments.
+						</p>
+						<p class="paymenthood-warning-notice__meta">
+							<span class="paymenthood-warning-notice__meta-label">Current webhook URL</span>
+							<a class="paymenthood-warning-notice__link" href="<?php echo esc_url($webhook_url); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html($webhook_url); ?></a>
+						</p>
+					</div>
+				</div>
+				<?php
 			}
 
 			if (
@@ -328,7 +360,7 @@ function paymenthood_init_gateway_class()
 		// Plugin options
 		public function init_form_fields()
 		{
-			$return_url = home_url('/?wc-api=paymenthood_setup');
+			$return_url = $this->build_public_wc_api_url('paymenthood_setup');
 			$setup_url = $this->paymenthood_panel_url . '/auth/signin?returnUrl=' . urlencode($return_url) . '&grantAuthorization=' . urlencode('true');
 
 			$saved_settings = get_option('woocommerce_' . $this->id . '_settings', array());
@@ -821,7 +853,30 @@ function paymenthood_init_gateway_class()
 				return $title;
 			}
 
+			// Do not inject HTML during AJAX/REST requests (e.g. checkout order creation)
+			// to prevent the raw <span> being persisted in the order's payment_method_title.
+			if (is_admin() || wp_doing_ajax() || (defined('REST_REQUEST') && REST_REQUEST)) {
+				return $title;
+			}
+
 			return esc_html($title) . ' <span class="paymenthood-sandbox-badge paymenthood-sandbox-badge--inline">Sandbox</span>';
+		}
+
+		public function add_sandbox_badge_to_order_payment_title($title, $order)
+		{
+			// Strip any HTML that may have been previously stored in the order record
+			// (caused by the gateway title filter firing during order creation).
+			$clean_title = wp_strip_all_tags($title);
+
+			if (is_admin()) {
+				return $clean_title;
+			}
+
+			if (!$order instanceof WC_Order || $order->get_payment_method() !== $this->id) {
+				return $clean_title;
+			}
+
+			return esc_html($clean_title) . ' <span class="paymenthood-sandbox-badge paymenthood-sandbox-badge--inline">Sandbox</span>';
 		}
 
 		public function payment_fields()
@@ -909,6 +964,14 @@ function paymenthood_init_gateway_class()
 
 				if ($title === '' || ($icon_light === '' && $icon_dark === '')) {
 					continue;
+				}
+
+				if ($icon_light !== '') {
+					$icon_light = $this->get_provider_icon_proxy_url($icon_light);
+				}
+
+				if ($icon_dark !== '') {
+					$icon_dark = $this->get_provider_icon_proxy_url($icon_dark);
 				}
 
 				$display_methods[] = array(
@@ -1098,8 +1161,9 @@ JS;
 
 			$is_checkout = is_checkout();
 			$is_checkout_pay = function_exists('is_checkout_pay_page') && is_checkout_pay_page();
+			$is_view_order = function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('view-order');
 
-			if (!$is_checkout && !$is_checkout_pay) {
+			if (!$is_checkout && !$is_checkout_pay && !$is_view_order) {
 				return;
 			}
 
@@ -1143,6 +1207,337 @@ JS;
 				&& in_array($tab, array('checkout', 'payment-gateways'), true)
 				&& $section === $this->id
 				&& isset($_GET['toggle_enabled']);
+		}
+
+		protected function get_public_base_url(): string
+		{
+			$request_host = $this->get_request_public_host();
+			$forwarded_proto = $this->get_forwarded_server_value('HTTP_X_FORWARDED_PROTO');
+			$is_https = (
+				(!empty($_SERVER['HTTPS']) && strtolower((string) wp_unslash($_SERVER['HTTPS'])) !== 'off')
+				|| $forwarded_proto === 'https'
+			);
+			$home_path = (string) wp_parse_url(home_url('/'), PHP_URL_PATH);
+			$home_path = $home_path !== '' ? '/' . trim($home_path, '/') : '';
+
+			if ($request_host !== '' && !in_array($request_host, array('localhost', '127.0.0.1', '::1'), true)) {
+				return ($is_https ? 'https://' : 'http://') . $request_host . $home_path;
+			}
+
+			$override = defined('PAYMENTHOOD_PUBLIC_BASE_URL') ? (string) PAYMENTHOOD_PUBLIC_BASE_URL : '';
+
+			$override = trim((string) apply_filters('paymenthood_public_base_url', $override));
+
+			if ($override !== '') {
+				return untrailingslashit($override);
+			}
+
+			return untrailingslashit(home_url('/'));
+		}
+
+		protected function get_request_public_host(): string
+		{
+			$forwarded_host = $this->get_forwarded_server_value('HTTP_X_FORWARDED_HOST');
+
+			if ($forwarded_host !== '') {
+				return $forwarded_host;
+			}
+
+			$original_host = $this->get_forwarded_server_value('HTTP_X_ORIGINAL_HOST');
+
+			if ($original_host !== '') {
+				return $original_host;
+			}
+
+			$host = isset($_SERVER['HTTP_HOST']) ? strtolower((string) wp_unslash($_SERVER['HTTP_HOST'])) : '';
+
+			return $host !== '' ? preg_replace('/:\\d+$/', '', $host) : '';
+		}
+
+		protected function get_forwarded_server_value(string $key): string
+		{
+			if (!isset($_SERVER[$key])) {
+				return '';
+			}
+
+			$value = strtolower(trim((string) wp_unslash($_SERVER[$key])));
+
+			if ($value === '') {
+				return '';
+			}
+
+			$parts = array_filter(array_map('trim', explode(',', $value)));
+			$value = $parts !== array() ? (string) end($parts) : $value;
+
+			return preg_replace('/:\\d+$/', '', $value);
+		}
+
+		protected function build_public_wc_api_url(string $endpoint): string
+		{
+			return add_query_arg(
+				array(
+					'wc-api' => $endpoint,
+				),
+				trailingslashit($this->get_public_base_url())
+			);
+		}
+
+		protected function maybe_log_local_callback_url(string $url, string $context): void
+		{
+			$host = strtolower((string) wp_parse_url($url, PHP_URL_HOST));
+
+			if ($host === '' || $host === 'localhost' || $host === '127.0.0.1' || $host === '::1') {
+				$this->log('PaymentHood callback URL is not publicly reachable', 'warning', array(
+					'context' => $context,
+					'url' => $url,
+				));
+			}
+		}
+
+		protected function is_paymenthood_order($order): bool
+		{
+			return $order instanceof WC_Order && $order->get_payment_method() === $this->id;
+		}
+
+		protected function get_order_pay_page_order()
+		{
+			if (!function_exists('is_checkout_pay_page') || !is_checkout_pay_page()) {
+				return null;
+			}
+
+			$order_id = function_exists('get_query_var') ? absint(get_query_var('order-pay')) : 0;
+
+			if ($order_id <= 0) {
+				return null;
+			}
+
+			return wc_get_order($order_id);
+		}
+
+		public function restrict_order_pay_gateways_to_paymenthood($gateways)
+		{
+			$order = $this->get_order_pay_page_order();
+
+			if (!$this->is_paymenthood_order($order)) {
+				return $gateways;
+			}
+
+			return isset($gateways[$this->id]) ? array($this->id => $gateways[$this->id]) : array();
+		}
+
+		public function prevent_terminal_paymenthood_order_payment($needs_payment, $order, $valid_order_statuses)
+		{
+			if (!$needs_payment || !$this->is_paymenthood_order($order)) {
+				return $needs_payment;
+			}
+
+			$payment_details = $this->get_paymenthood_payment_details_for_order($order);
+
+			if (is_wp_error($payment_details) || empty($payment_details)) {
+				return $needs_payment;
+			}
+
+			$payment_state = (string) ($payment_details['paymentState'] ?? '');
+
+			if (!$this->is_terminal_paymenthood_payment_state($payment_state)) {
+				return $needs_payment;
+			}
+
+			$this->log('PaymentHood order payment blocked because payment state is terminal', 'info', array(
+				'order_id' => $order->get_id(),
+				'payment_state' => $payment_state,
+			));
+
+			return false;
+		}
+
+		protected function get_paymenthood_payment_details_for_order($order)
+		{
+			if (!$this->is_paymenthood_order($order)) {
+				return array();
+			}
+
+			return $this->payment_service->get_payment_by_reference_id($this->app_id, $this->token, $order->get_id());
+		}
+
+		protected function is_terminal_paymenthood_payment_state(string $payment_state): bool
+		{
+			$normalized_state = strtolower(trim($payment_state));
+
+			return in_array($normalized_state, array('capture', 'captured', 'failed', 'refunded', 'disputed'), true);
+		}
+
+		protected function is_processing_paymenthood_payment_state(string $payment_state): bool
+		{
+			return $payment_state !== '' && !$this->is_terminal_paymenthood_payment_state($payment_state);
+		}
+
+		public function render_paymenthood_order_payment_box($order): void
+		{
+			if (!$this->is_paymenthood_order($order)) {
+				return;
+			}
+
+			$is_view_order    = function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('view-order');
+			$is_order_received = function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-received');
+
+			if (!$is_view_order && !$is_order_received) {
+				return;
+			}
+
+			$payment_details = $this->get_paymenthood_payment_details_for_order($order);
+
+			if (is_wp_error($payment_details) || empty($payment_details)) {
+				return;
+			}
+
+			$payment_state = (string) ($payment_details['paymentState'] ?? '');
+
+			if (!$this->is_processing_paymenthood_payment_state($payment_state)) {
+				return;
+			}
+
+			$redirect_url = (string) ($payment_details['redirectUrl'] ?? '');
+
+			if ($redirect_url === '') {
+				$redirect_url = (string) $order->get_meta('_payment_service_redirect_url');
+			}
+
+			if ($redirect_url === '') {
+				return;
+			}
+			?>
+			<section class="ph-pending-card" aria-label="Complete your PaymentHood payment">
+				<div class="ph-pending-card__header">
+					<div class="ph-pending-card__brand">
+						<span class="ph-pending-card__brand-dot" aria-hidden="true"></span>
+						<span class="ph-pending-card__brand-name">PaymentHood</span>
+					</div>
+					<span class="ph-pending-card__badge">
+						<span class="ph-pending-card__badge-dot" aria-hidden="true"></span>
+						Awaiting payment
+					</span>
+				</div>
+				<div class="ph-pending-card__body">
+					<div class="ph-pending-card__icon" aria-hidden="true">
+						<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+					</div>
+					<div class="ph-pending-card__copy">
+						<h2 class="ph-pending-card__title">Your payment is pending</h2>
+						<p class="ph-pending-card__desc">Your order is reserved and waiting for payment confirmation. Return to PaymentHood to securely complete this payment.</p>
+					</div>
+				</div>
+				<div class="ph-pending-card__footer">
+					<a class="ph-pending-card__cta" href="<?php echo esc_url($redirect_url); ?>">
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+						Continue to secure payment
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+					</a>
+				</div>
+			</section>
+			<?php
+		}
+
+		public function render_manual_refund_admin_notice(): void
+		{
+			// Detect current order — supports both classic posts editor and HPOS
+			$order_id = 0;
+			if (isset($_GET['post']) && 'shop_order' === get_post_type((int) $_GET['post'])) {
+				$order_id = (int) $_GET['post'];
+			} elseif (
+				isset($_GET['id'], $_GET['page'])
+				&& 'wc-orders' === sanitize_key($_GET['page'])
+			) {
+				$order_id = (int) $_GET['id'];
+			}
+
+			if (!$order_id) {
+				return;
+			}
+
+			$order = wc_get_order($order_id);
+			if (!$order || !$this->is_paymenthood_order($order)) {
+				return;
+			}
+
+			// Blue info box: automatic refund is supported by the provider.
+			if (
+				$order->get_meta('_paymenthood_can_refund') === '1'
+				&& !in_array($order->get_status(), ['refunded', 'cancelled', 'failed'], true)
+			) {
+				$provider_name  = $order->get_meta('_paymenthood_provider_name');
+				$provider_label = !empty($provider_name) ? $provider_name : 'the payment provider';
+				?>
+				<div class="notice notice-info" style="background-color:#e8f4fd;border-left-color:#2196f3;border-left-width:4px;">
+					<p>
+						<strong>&#8505; PaymentHood &mdash; Automatic refund supported</strong><br>
+						This payment supports automatic refunds via <strong><?php echo esc_html($provider_label); ?></strong>. If you process a refund, the funds will be returned to the customer&rsquo;s original payment method or bank account automatically.
+					</p>
+				</div>
+				<?php
+			}
+
+			// Yellow warning box: provider does not support automatic refunds — manual action needed.
+			if ($order->get_meta('_paymenthood_manual_refund_required') === '1') {
+				?>
+				<div class="notice notice-warning" style="background-color:#fff8e1;border-left-color:#f0ad4e;border-left-width:4px;">
+					<p>
+						<strong>&#9888; PaymentHood &mdash; Manual refund required</strong><br>
+						This payment provider does not support automatic refunds. The order has been marked as refunded in PaymentHood, but <strong>no money has been returned to the customer automatically</strong>. Please manually transfer the refund amount to the customer&rsquo;s bank account or original payment method.
+					</p>
+				</div>
+				<?php
+			}
+		}
+
+		public function render_admin_order_payment_id($order): void
+		{
+			if (!$this->is_paymenthood_order($order)) {
+				return;
+			}
+
+			$payment_id = $order->get_meta('_payment_service_payment_id');
+
+			if (empty($payment_id)) {
+				return;
+			}
+
+			$detail_url = rtrim($this->paymenthood_panel_url, '/') . '/'
+				. rawurlencode($this->app_id)
+				. '/payments/detail?appId=' . rawurlencode($this->app_id)
+				. '&paymentId=' . rawurlencode($payment_id);
+			?>
+			<p class="form-field form-field-wide">
+				<label><?php esc_html_e('PaymentHood Payment ID', 'paymenthood'); ?></label>
+				<a href="<?php echo esc_url($detail_url); ?>" target="_blank" rel="noopener noreferrer"
+				   style="font-family:monospace;font-size:12px;word-break:break-all;"><?php echo esc_html($payment_id); ?></a>
+			</p>
+			<?php
+		}
+
+		protected function extract_provider_name(array $data): string
+		{
+			foreach (['providerName', 'paymentMethod', 'providerTitle'] as $field) {
+				if (isset($data[$field]) && is_string($data[$field]) && $data[$field] !== '') {
+					return $data[$field];
+				}
+			}
+			if (isset($data['provider'])) {
+				if (is_string($data['provider']) && $data['provider'] !== '') {
+					return $data['provider'];
+				}
+				if (is_array($data['provider']) && isset($data['provider']['name']) && $data['provider']['name'] !== '') {
+					return (string) $data['provider']['name'];
+				}
+			}
+			return '';
+		}
+
+		protected function is_local_callback_base_url(): bool
+		{
+			$host = strtolower((string) wp_parse_url($this->get_public_base_url(), PHP_URL_HOST));
+
+			return $host === '' || in_array($host, array('localhost', '127.0.0.1', '::1'), true);
 		}
 
 		public function guard_paymenthood_enable_route()
@@ -1221,7 +1616,8 @@ JS;
 			$this->flush_checkout_methods_cache($app_detail['sandbox_app_id'], $app_detail['live_app_id']);
 
 			// Set payment webhook in payment service
-			$webhook_url = home_url('/?wc-api=payment_webhook');
+			$webhook_url = $this->build_public_wc_api_url('payment_webhook');
+			$this->maybe_log_local_callback_url($webhook_url, 'setup_webhook');
 			$webhook_tokens = $this->webhook_token_generator($option_key, $settings);
 
 			// Sandbox
@@ -1279,32 +1675,65 @@ JS;
 			$redirect_url = $order->get_meta('_payment_service_redirect_url');
 
 			if ($payment_id && $redirect_url) {
-				$this->update_order_status($order_id);
-				$order_status = $order->get_status();
+				$payment_details  = $this->get_paymenthood_payment_details_for_order($order);
+				$payment_state    = !is_wp_error($payment_details) ? (string) ($payment_details['paymentState'] ?? '') : '';
+				$fresh_redirect   = !is_wp_error($payment_details) ? (string) ($payment_details['redirectUrl'] ?? '') : '';
 
-				if ($order_status == 'failed') {
+				if ($payment_state !== '' && $this->is_terminal_paymenthood_payment_state($payment_state)) {
+					// Payment is in a terminal state – do not allow the customer to retry.
 					return [
-						'result' => 'failure',
-						'redirect' => $order->get_checkout_payment_url(),
+						'result'   => 'failure',
+						'redirect' => $order->get_view_order_url(),
+					];
+				}
+
+				if ($payment_state !== '' && $this->is_processing_paymenthood_payment_state($payment_state) && $fresh_redirect !== '') {
+					// Payment is still in-progress – redirect back to PaymentHood using the fresh URL.
+					return [
+						'result'   => 'success',
+						'redirect' => $fresh_redirect,
+					];
+				}
+
+				// API unavailable – fall back to the stored values.
+				$this->update_order_status($order_id);
+				if ($order->get_status() === 'failed') {
+					return [
+						'result'   => 'failure',
+						'redirect' => $order->get_view_order_url(),
 					];
 				}
 
 				return [
-					'result' => 'success',
+					'result'   => 'success',
 					'redirect' => $redirect_url,
 				];
 			}
 
 			$customer_id = $order->get_customer_id();
+			$return_url = $this->get_return_url($order);
+			$webhook_url = $this->build_public_wc_api_url('payment_webhook');
+			$this->maybe_log_local_callback_url($webhook_url, 'payment_webhook');
 
 			$this->log('Starting payment process. order_id: ' . $order_id, 'info');
 
 			// Generate request body
 			$items = [];
+			$has_subscription = false;
 
 			foreach ($order->get_items() as $item) {
 				/** @var WC_Order_Item_Product $item */
 				$product = $item->get_product();
+
+				if ($product && !$has_subscription) {
+					$product_type = $product->get_type();
+					if (
+						in_array($product_type, ['subscription', 'variable-subscription', 'subscription_variation'], true)
+						|| (class_exists('WC_Subscriptions_Product') && WC_Subscriptions_Product::is_subscription($product))
+					) {
+						$has_subscription = true;
+					}
+				}
 
 				$items[] = [
 					'name' => $item->get_name(),
@@ -1324,8 +1753,9 @@ JS;
 				'amount' => $order->get_total(),
 				'currency' => $order->get_currency(),
 				'autoCapture' => true,
-				//'webhookUrl' => home_url('/?wc-api=payment_webhook'),
-				'returnUrl' => $this->get_return_url($order),
+				'showPayRecurringInCheckout' => $has_subscription,
+				'webhookUrl' => $webhook_url,
+				'returnUrl' => $return_url,
 				'customerOrder' => [
 					'customer' => [
 						'customerId' => $customer_id > 0 ? "$customer_id" : wp_generate_uuid4(),
@@ -1366,11 +1796,17 @@ JS;
 			$payment_result = $this->payment_service->create_hosted_payment($this->app_id, $this->token, $body);
 
 			if (!is_wp_error($payment_result)) {
-				$this->log('Payment created successfully. order_id: ' . $order_id, 'info');
-
-				$this->log($payment_result['paymentId']);
+				$this->log('Payment created successfully', 'info', array(
+					'order_id' => $order_id,
+					'payment_id' => $payment_result['paymentId'] ?? '',
+				));
 				$order->update_meta_data('_payment_service_payment_id', $payment_result['paymentId']);
 				$order->update_meta_data('_payment_service_redirect_url', $payment_result['redirectUrl']);
+				$order->add_order_note(
+					sprintf('PaymentHood payment initiated. Payment ID: %s', $payment_result['paymentId']),
+					0,
+					true
+				);
 
 				// Save Fee details from API
 				if (isset($payment_result['feeBreakdown'])) {
@@ -1403,103 +1839,95 @@ JS;
 
 		public function payment_webhook_handler()
 		{
-			// Log webhook entry point
-			$this->log('Webhook endpoint hit', 'info', [
-				'method' => $_SERVER['REQUEST_METHOD'] ?? null,
-				'uri'    => $_SERVER['REQUEST_URI'] ?? null,
-			]);
+			try {
+				$headers = getallheaders();
+				$auth_header = trim($headers['Authorization'] ?? '');
+				$token = preg_match('/^Bearer\s+(\S+)$/i', $auth_header, $m) ? $m[1] : '';
 
-			// Validate webhook token
-			$headers = getallheaders();
-			$auth_header = trim($headers['Authorization'] ?? '');
-			$token = preg_match('/^Bearer\s+(\S+)$/i', $auth_header, $m) ? $m[1] : '';
+				if (empty($token) || !hash_equals($this->webhook_token, $token)) {
+					throw new \RuntimeException('Invalid authorization token', 401);
+				}
 
-			$this->log('Webhook authorization header parsed', 'info', [
-				'has_header' => !empty($auth_header),
-				'token_valid' => !empty($token) && hash_equals($this->webhook_token, $token),
-			]);
+				$raw_body = file_get_contents('php://input');
 
-			if (empty($token) || !hash_equals($this->webhook_token, $token)) {
-				$this->log('Invalid token in webhook request', 'error');
-				status_header(401);
-				exit('Unauthorized');
+				if (empty($raw_body)) {
+					throw new \RuntimeException('Empty request body', 400);
+				}
+
+				$data = json_decode($raw_body, true);
+
+				if (json_last_error() !== JSON_ERROR_NONE) {
+					throw new \RuntimeException('Invalid JSON payload: ' . json_last_error_msg(), 400);
+				}
+
+				$order_id = (string) ($data['payment']['referenceId'] ?? '');
+				$payment_state = (string) ($data['payment']['paymentState'] ?? '');
+
+				if ($order_id === '') {
+					throw new \RuntimeException('Missing referenceId in payload', 400);
+				}
+
+				$this->log('Webhook state transition', 'info', [
+					'order_id'      => $order_id,
+					'payment_state' => $payment_state,
+				]);
+
+				$this->update_order_status($order_id);
+
+				status_header(200);
+				exit('OK');
+
+			} catch (\Throwable $e) {
+				$this->log('Webhook request failed', 'error', [
+					'reason' => $e->getMessage(),
+					'code'   => $e->getCode(),
+				]);
+				status_header($e->getCode() >= 400 ? $e->getCode() : 400);
+				exit($e->getMessage());
 			}
-
-			$raw_body = file_get_contents('php://input');
-
-			$this->log('Webhook raw body received', 'info', [
-				'body_length' => strlen($raw_body),
-			]);
-
-			if (empty($raw_body)) {
-				$this->log('Empty webhook body', 'error');
-				status_header(400);
-				exit('Empty body');
-			}
-
-			$data = json_decode($raw_body, true);
-
-			if (json_last_error() !== JSON_ERROR_NONE) {
-				$this->log('Invalid JSON in webhook', 'error');
-				status_header(400);
-				exit('Invalid JSON');
-			}
-
-			$order_id = $data['payment']['referenceId'] ?? '';
-
-			$this->log('Webhook payload parsed', 'info', [
-				'order_id' => $order_id,
-				'payment_state' => $data['payment']['paymentState'] ?? null,
-			]);
-
-			if (empty($order_id)) {
-				$this->log('Missing referenceId in webhook', 'error');
-				status_header(400);
-				exit('Missing referenceId');
-			}
-
-			// Explicit log before calling GET sync
-			$this->log('Calling update_order_status from webhook', 'info', [
-				'order_id' => $order_id,
-			]);
-
-			$this->update_order_status($order_id);
-
-			$this->log('Webhook processing completed', 'info', [
-				'order_id' => $order_id,
-			]);
-
-			status_header(200);
-			exit('OK');
 		}
 
 		protected function payment_state_handler($order_status, $payment_state)
 		{
-			switch ($payment_state) {
+			switch (strtolower($payment_state)) {
 
-				case 'Refunding':
-					return 'on-hold';
+				case 'refunding':
+					// Only move to on-hold if order hasn't already reached a further state.
+					return in_array($order_status, ['processing', 'completed'], true)
+						? $order_status
+						: 'on-hold';
 
-				case 'Refunded':
+				case 'refunded':
+					// Always reflect an internal PaymentHood refund, even from 'completed'.
 					return 'refunded';
 
-				case 'Captured':
-					return 'processing';
+				case 'captured':
+					// Never downgrade a completed order back to processing.
+					return $order_status === 'completed' ? 'completed' : 'processing';
 
-				case 'Failed':
-				case 'Disputed':
+				case 'failed':
+					// Terminal failure – no retry possible. Cancel so WooCommerce
+					// restores reserved stock automatically.
+					return 'cancelled';
+
+				case 'disputed':
+					// Chargeback filed. Mark as failed to flag for admin review.
+					// Stock has likely already been fulfilled; do not restore it.
 					return 'failed';
 
-				case 'Created':
-				case 'Authorized':
-				case 'Authorizing':
-				case 'Approved':
-				case 'Capturing':
-				case 'SaleInProgress':
-				case 'ProviderAuthorizedHold':
-				case 'Cancelling':
-				case 'CapturedHold':
-					return 'on-hold';
+				case 'created':
+				case 'authorized':
+				case 'authorizing':
+				case 'approved':
+				case 'capturing':
+				case 'saleinprogress':
+				case 'providerauthorizedhold':
+				case 'cancelling':
+				case 'capturedhold':
+					// Never walk back an already-paid or completed order.
+					return in_array($order_status, ['processing', 'completed'], true)
+						? $order_status
+						: 'on-hold';
 
 				default:
 					return $order_status;
@@ -1516,9 +1944,11 @@ JS;
 
 			$order_status = $order->get_status();
 
-			// Do NOT block processing orders (refund requires this)
-			if (in_array($order_status, ['completed', 'cancelled', 'failed'], true)) {
-				return; // Allow processing & refunded to be updated
+			// Block truly terminal statuses that should never be overwritten.
+			// 'completed' is intentionally excluded so that a PaymentHood internal
+			// refund can still transition a completed order to 'refunded'.
+			if (in_array($order_status, ['cancelled', 'failed', 'refunded'], true)) {
+				return;
 			}
 
 			$payment_details = $this->payment_service->get_payment_by_reference_id($this->app_id, $this->token, $order_id);
@@ -1528,6 +1958,19 @@ JS;
 			}
 
 			$payment_state = $payment_details['paymentState'] ?? '';
+
+			// Always sync the latest fee breakdown from the API, regardless of status change.
+			$this->sync_payment_fees($order, $payment_details);
+
+			// Cache refund eligibility for the admin info notice (shown on order edit page).
+			if (array_key_exists('canRefund', $payment_details)) {
+				$order->update_meta_data('_paymenthood_can_refund', $payment_details['canRefund'] ? '1' : '0');
+				$cached_provider = $this->extract_provider_name($payment_details);
+				if ($cached_provider !== '') {
+					$order->update_meta_data('_paymenthood_provider_name', $cached_provider);
+				}
+				$order->save_meta_data();
+			}
 
 			$this->log('Payment state fetched', 'info', [
 				'order_id' => $order_id,
@@ -1546,6 +1989,12 @@ JS;
 
 			if ($new_order_status === 'processing') {
 				$order->payment_complete();
+			} elseif (strtolower($payment_state) === 'disputed') {
+				$order->update_status(
+					$new_order_status,
+					__('Payment disputed (chargeback). Review this order immediately — do not ship if not yet fulfilled.', 'paymenthood')
+				);
+				$this->notify_admin_disputed_order($order);
 			} else {
 				$order->update_status($new_order_status, 'Order status synced from PaymentHood.');
 			}
@@ -1558,11 +2007,59 @@ JS;
 			]);
 		}
 
+		protected function sync_payment_fees(WC_Order $order, array $payment_details): void
+		{
+			$fee_breakdown = $payment_details['feeBreakdown'] ?? null;
+
+			if (!is_array($fee_breakdown)) {
+				return;
+			}
+
+			$changed = false;
+
+			if (array_key_exists('providerFee', $fee_breakdown)) {
+				$order->update_meta_data('_provider_fee', (float) $fee_breakdown['providerFee']);
+				$changed = true;
+			}
+
+			if (array_key_exists('appFee', $fee_breakdown)) {
+				$order->update_meta_data('_app_fee', (float) $fee_breakdown['appFee']);
+				$changed = true;
+			}
+
+			if (array_key_exists('netAmount', $fee_breakdown)) {
+				$order->update_meta_data('_net_amount', (float) $fee_breakdown['netAmount']);
+				$changed = true;
+			}
+
+			if ($changed) {
+				$order->save_meta_data();
+			}
+		}
+
 		public function thankyou_page_handler($order_id)
 		{
-			$this->log('Payment service redirected to thnak you page successfully. order_id: ' . $order_id, 'info');
-
 			$this->update_order_status($order_id);
+		}
+
+		protected function notify_admin_disputed_order(WC_Order $order): void
+		{
+			$order_id   = $order->get_id();
+			$order_link = admin_url('post.php?post=' . $order_id . '&action=edit');
+			$subject    = sprintf('[%s] Payment dispute on order #%d', get_bloginfo('name'), $order_id);
+			$message    = implode("\n\n", [
+				sprintf('A chargeback or payment dispute has been filed for order #%d.', $order_id),
+				'Review this order immediately. If the goods have not yet been shipped, put the order on hold and do not fulfil it until the dispute is resolved.',
+				'Order details: ' . $order_link,
+				sprintf('Customer: %s %s (%s)', $order->get_billing_first_name(), $order->get_billing_last_name(), $order->get_billing_email()),
+				sprintf('Order total: %s', wp_strip_all_tags(wc_price($order->get_total()))),
+			]);
+
+			wp_mail(get_option('admin_email'), $subject, $message);
+
+			$this->log('Admin notified of disputed order', 'warning', [
+				'order_id' => $order_id,
+			]);
 		}
 
 		public function process_refund($order_id, $amount = null, $reason = '')
@@ -1571,6 +2068,20 @@ JS;
 
 			if (!$order) {
 				return new WP_Error('invalid_order', 'Invalid order ID');
+			}
+
+			// PaymentHood only supports full-order refunds. Reject partial amounts.
+			$order_total = (float) $order->get_total();
+			$refund_amount = $amount !== null ? (float) $amount : $order_total;
+
+			if (round($refund_amount, 2) !== round($order_total, 2)) {
+				return new WP_Error(
+					'partial_refund_not_supported',
+					sprintf(
+						'PaymentHood only supports full refunds. To refund this order, enter the full amount of %s.',
+						html_entity_decode( wp_strip_all_tags( wc_price( $order_total ) ) )
+					)
+				);
 			}
 
 			$payment_id = $order->get_meta('_payment_service_payment_id');
@@ -1597,22 +2108,54 @@ JS;
 			// Validate refund eligibility
 			$check_body = $this->payment_service->get_payment_by_id($this->app_id, $this->token, $payment_id);
 
-			if (is_wp_error($check_body) || empty($check_body['canRefund'])) {
+			if (is_wp_error($check_body)) {
 				delete_transient($lock_key);
-				return new WP_Error('refund_not_allowed', 'Refund not allowed by provider.');
+				return new WP_Error('refund_check_failed', 'Unable to verify refund eligibility.');
 			}
 
-			// Call refund API
-			$body = $this->payment_service->refund_payment($this->app_id, $this->token, $payment_id);
+			$can_refund = !empty($check_body['canRefund']);
 
-			if (is_wp_error($body)) {
+			$this->log('Refund eligibility check', 'info', [
+				'order_id'    => $order_id,
+				'payment_id'  => $payment_id,
+				'can_refund'  => $can_refund,
+				'check_body'  => $check_body,
+			]);
 
-				delete_transient($lock_key);
+			// Cache canRefund state for the admin info notice.
+			$order->update_meta_data('_paymenthood_can_refund', $can_refund ? '1' : '0');
+			$cached_provider = $this->extract_provider_name($check_body);
+			if ($cached_provider !== '') {
+				$order->update_meta_data('_paymenthood_provider_name', $cached_provider);
+			}
+			$order->save_meta_data();
 
-				return $body;
+			$base_description = sprintf('Refund for order #%s issued from WooCommerce.', $order_id);
+			$description = trim($reason) !== ''
+				? $base_description . ' ' . trim($reason)
+				: $base_description;
+
+			if ($can_refund) {
+				// Provider supports a native refund — trigger it through the refund API.
+				$body = $this->payment_service->refund_payment($this->app_id, $this->token, $payment_id, $description);
+			} else {
+				// Provider does not support native refunds — mark the payment as refunded manually.
+				$body = $this->app_service->mark_as_refund($this->app_id, $this->token, $payment_id, $description);
+
+				if (!is_wp_error($body)) {
+					$order->update_meta_data('_paymenthood_manual_refund_required', '1');
+					$order->save_meta_data();
+				}
 			}
 
-			$order->add_order_note('PaymentHood refund requested.');
+			if (!$can_refund) {
+				$order->add_order_note(
+					'⚠️ MANUAL REFUND REQUIRED: This payment provider does not support automatic refunds. ' .
+					'No money has been returned to the customer automatically. ' .
+					'You must manually transfer the refund amount to the customer\'s bank account or original payment method.',
+					1 // visible to admin
+				);
+			}
 			$order->update_meta_data('_paymenthood_last_refund_time', current_time('mysql'));
 			$order->save();
 
@@ -1692,12 +2235,15 @@ JS;
 // --- Display Fees next to order items (global scope) ---
 add_action('woocommerce_admin_order_totals_after_total', function($order_id){
     $order = wc_get_order($order_id);
-    $provider_fee = $order->get_meta('_provider_fee');
-    $app_fee = $order->get_meta('_app_fee');
+    $provider_fee = (float) $order->get_meta('_provider_fee');
+    $app_fee      = (float) $order->get_meta('_app_fee');
+    $net_amount   = $order->get_meta('_net_amount');
 
-    if ($provider_fee || $app_fee) {
-        $provider_fee_html = $provider_fee ? wc_price($provider_fee) : '';
-        $app_fee_html      = $app_fee ? wc_price($app_fee) : '';
+    $total_fee = $provider_fee + $app_fee;
+
+    if ($total_fee > 0) {
+        $fee_html        = wc_price($total_fee);
+        $net_amount_html = $net_amount !== '' ? wc_price($net_amount) : '';
         include plugin_dir_path(__FILE__) . 'templates/order-fee-rows.php';
     }
 });

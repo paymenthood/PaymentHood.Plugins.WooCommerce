@@ -27,6 +27,99 @@ body {
     overflow: auto;
 }
 
+/* ── PaymentHood localhost webhook warning ─────────────────────────── */
+.paymenthood-warning-notice {
+    margin: 16px 0;
+    padding: 0;
+    border: 2px solid #ca8a04;
+    border-radius: 14px;
+    background: #fef08a;
+    box-shadow:
+        0 0 0 4px rgba(250, 204, 21, 0.35),
+        0 12px 32px rgba(120, 80, 0, 0.18);
+    overflow: hidden;
+    max-width: 760px;
+}
+
+/* Dark amber header band */
+.paymenthood-warning-notice__header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #92400e 0%, #b45309 100%);
+    border-bottom: 2px solid #ca8a04;
+}
+
+.paymenthood-warning-notice__icon {
+    flex-shrink: 0;
+    font-size: 22px;
+    line-height: 1;
+    color: #fef08a;
+}
+
+.paymenthood-warning-notice__eyebrow {
+    color: #fef9c3;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.3;
+}
+
+/* Yellow body */
+.paymenthood-warning-notice__body-wrap {
+    padding: 18px 20px 20px;
+}
+
+.paymenthood-warning-notice__title {
+    margin: 0 0 10px;
+    color: #78350f;
+    font-size: 17px;
+    line-height: 1.35;
+    font-weight: 700;
+}
+
+.paymenthood-warning-notice__body {
+    margin: 0;
+    color: #7c4a00;
+    font-size: 14px;
+    line-height: 1.65;
+}
+
+.paymenthood-warning-notice__body strong {
+    color: #78350f;
+}
+
+.paymenthood-warning-notice__meta {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #fcd34d;
+}
+
+.paymenthood-warning-notice__meta-label {
+    display: block;
+    margin-bottom: 4px;
+    color: #92400e;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.paymenthood-warning-notice__link {
+    color: #7c2d12;
+    font-weight: 600;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 2px;
+    word-break: break-all;
+}
+
+.paymenthood-warning-notice__link:hover,
+.paymenthood-warning-notice__link:focus {
+    color: #431407;
+}
+
 .paymenthood-settings-card {
     border: 1px solid #d0d7de;
     border-radius: 16px;
