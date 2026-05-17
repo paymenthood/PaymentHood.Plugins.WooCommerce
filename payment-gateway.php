@@ -288,6 +288,7 @@ function paymenthood_init_gateway_class()
 						<p class="paymenthood-warning-notice__title">PaymentHood cannot receive live payment webhooks.</p>
 						<p class="paymenthood-warning-notice__body">
 							Your store is currently using a <strong>localhost callback URL</strong>. Payment webhooks cannot reach localhost from outside your machine. Use a public domain or a tunnel such as Cloudflare Tunnel or ngrok before accepting live payments.
+							<a href="https://github.com/paymenthood/paymenthood-docs/blob/main/CLOUDFLARE-TUNNEL-INSTRUCTIONS.md" target="_blank" rel="noopener noreferrer">Learn how to set up a Cloudflare Tunnel &rarr;</a>
 						</p>
 						<p class="paymenthood-warning-notice__meta">
 							<span class="paymenthood-warning-notice__meta-label">Current webhook URL</span>
