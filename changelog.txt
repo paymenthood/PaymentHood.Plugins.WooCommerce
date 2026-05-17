@@ -1,0 +1,12 @@
+*** PaymentHood Payment Gateway Changelog ***
+
+2026-05-17 - version 1.0.0
+* Added - Initial release of the PaymentHood Payment Gateway for WooCommerce.
+* Added - Multi-provider hosted checkout page integration.
+* Added - Automatic and manual refund support with admin notices.
+* Added - Webhook-based real-time order status synchronisation.
+* Added - Sandbox (test) mode with separate credentials.
+* Added - HPOS (High-Performance Order Storage) compatibility.
+* Added - WooCommerce Blocks (Cart and Checkout) compatibility.
+* Added - Per-order fee breakdown (provider fee, app fee, net amount).
+* Added - Subscription product detection (showPayRecurringInCheckout).

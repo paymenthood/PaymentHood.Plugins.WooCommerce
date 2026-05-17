@@ -1,5 +1,7 @@
 <?php
 
+defined( 'ABSPATH' ) || exit;
+
 class PaymentHood_App_Service
 {
     private string $base_url;

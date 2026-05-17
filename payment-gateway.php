@@ -1,12 +1,28 @@
 <?php
-
 /**
- * Plugin Name: PaymentHood
- * Plugin URI:  https://paymenthood.com
- * Author:      PaymentHood
- * Description: Pay with confidence. Paymenthood handles the rest.
- * Version:     1.0.0
+ * Plugin Name:          PaymentHood Payment Gateway for WooCommerce
+ * Plugin URI:           https://paymenthood.com
+ * Description:          Accept payments via PaymentHood — a flexible, multi-provider payment gateway for WooCommerce.
+ * Version:              1.0.0
+ * Author:               PaymentHood
+ * Author URI:           https://paymenthood.com
+ * Developer:            PaymentHood
+ * Developer URI:        https://paymenthood.com
+ * Text Domain:          paymenthood
+ * Domain Path:          /languages
+ *
+ * Requires at least:    6.0
+ * Requires PHP:         8.0
+ * WC requires at least: 8.0
+ * WC tested up to:      9.9
+ *
+ * License:              GNU General Public License v3.0
+ * License URI:          https://www.gnu.org/licenses/gpl-3.0.html
+ *
+ * @package PaymentHood
  */
+
+defined( 'ABSPATH' ) || exit;
 
 function paymenthood_bootstrap_debug_enabled()
 {
