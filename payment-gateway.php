@@ -452,7 +452,7 @@ function paymenthood_init_gateway_class()
 		public function generate_paymenthood_setup_status_html($key, $data)
 		{
 			$field_key = $this->get_field_key($key);
-			$logo_url = $this->get_logo_url();
+			$logo_url = $this->get_white_logo_url();
 			$defaults = array(
 				'title' => '',
 				'setup_completed' => false,
@@ -668,6 +668,17 @@ function paymenthood_init_gateway_class()
 			return ob_get_clean();
 		}
 
+		protected function get_white_logo_url()
+		{
+			$path = 'assets/images/paymenthood-white.webp';
+
+			if (file_exists(plugin_dir_path(__FILE__) . $path)) {
+				return plugins_url($path, __FILE__);
+			}
+
+			return $this->get_logo_url();
+		}
+
 		protected function get_logo_url()
 		{
 			$logo_candidates = array(
@@ -831,6 +842,7 @@ function paymenthood_init_gateway_class()
 				array(
 					'timeout' => 20,
 					'redirection' => 3,
+					'sslverify' => !(defined('WP_DEBUG') && WP_DEBUG),
 				)
 			);
 
@@ -842,6 +854,7 @@ function paymenthood_init_gateway_class()
 				$this->log('Provider icon proxy request failed', 'warning', array(
 					'icon_url' => $icon_url,
 					'status_code' => $status_code,
+					'error' => is_wp_error($response) ? $response->get_error_message() : '',
 				));
 				status_header(404);
 				exit;
