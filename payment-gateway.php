@@ -137,9 +137,9 @@ function paymenthood_init_gateway_class()
 
 	class PaymentHood_Gateway extends WC_Payment_Gateway
 	{
-		protected string $paymenthood_panel_url = "https://black-cliff-07cabf01e.7.azurestaticapps.net";
-		protected string $paymenthood_payment_app_api_url = "https://payment-app-service-stage-eje7arhbe0crhpcu.westeurope-01.azurewebsites.net";
-		protected string $paymenthood_payment_api_url = "https://payment-service-stage-baauhwa0ghbjdzc7.westeurope-01.azurewebsites.net";
+		protected string $paymenthood_panel_url = "https://console.paymenthood.com";
+		protected string $paymenthood_payment_app_api_url = "https://appapi.paymenthood.com";
+		protected string $paymenthood_payment_api_url = "https://api.paymenthood.com";
 		protected string $app_id;
 		protected string $token;
 		protected string $webhook_token;
