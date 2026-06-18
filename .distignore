@@ -1,0 +1,24 @@
+# Files and directories that must NOT be shipped in the distributed plugin zip.
+# Used by `wp dist-archive` and mirrors what the WooCommerce Marketplace expects:
+# only runtime files belong in the package.
+
+.git
+.gitignore
+.github
+.idea
+.vscode
+.distignore
+node_modules
+vendor
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml
+phpcs.xml.dist
+.phpcs.xml.dist
+*.map
+*.log
+tests
+README.md
+templates/admin-error-page.php

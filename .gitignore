@@ -29,6 +29,10 @@ log.txt
 /out-tsc
 /bazel-out
 
+# Composer (plugin ships no PHP dependencies; nothing autoloaded)
+/vendor
+composer.lock
+
 # Node
 /node_modules
 npm-debug.log

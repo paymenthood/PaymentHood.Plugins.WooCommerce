@@ -63,7 +63,7 @@ class PaymentHood_App_Service
 
             return new WP_Error(
                 'invalid_sandbox_app_details',
-                'Sandbox app ID or token is missing'
+                __( 'Sandbox app ID or token is missing.', 'paymenthood' )
             );
         }
 
@@ -72,7 +72,7 @@ class PaymentHood_App_Service
 
             return new WP_Error(
                 'invalid_live_app_details',
-                'Live app ID or token is missing'
+                __( 'Live app ID or token is missing.', 'paymenthood' )
             );
         }
 
@@ -499,11 +499,10 @@ class PaymentHood_App_Service
         $url = $this->base_url . '/api/apps/' . rawurlencode($app_id) . '/payments/' . rawurlencode($payment_id) . '/mark-as-refund'
             . '?description=' . rawurlencode($description);
 
-        $this->log('Mark-as-refund API request', 'warning', array(
+        $this->log('Mark-as-refund API request', 'info', array(
             'url'         => $url,
             'payment_id'  => $payment_id,
             'app_id'      => $app_id,
-            'token'       => $token,
             'description' => $description,
         ));
 

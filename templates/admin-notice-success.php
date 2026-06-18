@@ -6,5 +6,5 @@
 defined( 'ABSPATH' ) || exit;
 ?>
 <div class="notice notice-success is-dismissible">
-	<p><strong>PaymentHood:</strong> Setup completed successfully.</p>
+	<p><strong>PaymentHood:</strong> <?php esc_html_e( 'Setup completed successfully.', 'paymenthood' ); ?></p>
 </div>

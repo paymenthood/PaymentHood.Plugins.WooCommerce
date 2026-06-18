@@ -652,3 +652,37 @@ body {
         flex-direction: column;
     }
 }
+
+/* ── Skeleton loading for provider chips in the Supported gateways row ──
+ * While the logo image is in flight the whole chip container shimmers.
+ * onload/onerror removes .paymenthood-provider-chip--loading from the chip.
+ */
+@keyframes paymenthood-skeleton-shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position: 200px 0; }
+}
+
+.paymenthood-supported-gateways-row .paymenthood-provider-chip--loading {
+    width: 90px;
+    min-width: 90px;
+    height: 36px;
+    border-radius: 10px;
+    background-color: #e7eaee;
+    background-image: linear-gradient(90deg, #e7eaee 0%, #f0f2f4 40%, #e7eaee 100%);
+    background-size: 400px 100%;
+    background-repeat: no-repeat;
+    animation: paymenthood-skeleton-shimmer 1.3s ease-in-out infinite;
+    overflow: hidden;
+}
+
+.paymenthood-supported-gateways-row .paymenthood-provider-chip--loading > * {
+    opacity: 0;
+    pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .paymenthood-supported-gateways-row .paymenthood-provider-chip--loading {
+        animation: none;
+        background-image: none;
+    }
+}

@@ -1,7 +1,7 @@
 <?php
 /**
- * Plugin Name:          PaymentHood Payment Gateway for WooCommerce
- * Plugin URI:           https://paymenthood.com
+ * Plugin Name:          PaymentHood
+ * Plugin URI:           https://www.paymenthood.com/integrations/woocommerce/
  * Description:          Accept payments via PaymentHood — a flexible, multi-provider payment gateway for WooCommerce.
  * Version:              1.0.0
  * Author:               PaymentHood
@@ -14,7 +14,7 @@
  * Requires at least:    6.0
  * Requires PHP:         8.0
  * WC requires at least: 8.0
- * WC tested up to:      9.9
+ * WC tested up to:      10.8.1
  *
  * License:              GNU General Public License v3.0
  * License URI:          https://www.gnu.org/licenses/gpl-3.0.html
@@ -47,7 +47,7 @@ function paymenthood_log_bootstrap($message, $level = 'info', $context = array()
 		return;
 	}
 
-	error_log(
+	error_log( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log,QITStandard.PHP.DebugCode.DebugFunctionFound -- Intentional production error logging, not debug code.
 		sprintf(
 			'[paymenthood][%s] %s %s',
 			strtoupper($level),
@@ -106,7 +106,7 @@ function paymenthood_add_gateway_class($gateways)
 
 // Add Blocks support for PaymentHood
 add_action('woocommerce_blocks_loaded', function () {
-	if (!class_exists('WC_PaymentHood_Blocks')) {
+	if (!class_exists('PaymentHood_Blocks')) {
 		require_once plugin_dir_path(__FILE__) . 'includes/class-wc-paymenthood-gateway-blocks-support.php';
 	}
 
@@ -116,7 +116,7 @@ add_action('woocommerce_blocks_loaded', function () {
 			class_exists('\\Automattic\\WooCommerce\\Blocks\\Payments\\Integrations\\AbstractPaymentMethodType')
 		) {
 
-			$registry->register(new WC_PaymentHood_Blocks());
+			$registry->register(new PaymentHood_Blocks());
 		}
 	});
 });
@@ -151,8 +151,8 @@ function paymenthood_init_gateway_class()
 		{
 			$this->id = 'paymenthood';
 			$this->has_fields = false; // In case you need a custom credit card form
-			$this->method_title = 'PaymentHood';
-			$this->method_description = 'Pay with confidence. Paymenthood handles the rest.';
+			$this->method_title = __( 'PaymentHood', 'paymenthood' );
+			$this->method_description = __( 'Pay with confidence. PaymentHood handles the rest.', 'paymenthood' );
 			$this->icon = $this->get_logo_url();
 
 			// Gateways can support subscriptions, refunds, saved payment methods
@@ -282,16 +282,21 @@ function paymenthood_init_gateway_class()
 				<div class="notice paymenthood-warning-notice">
 					<div class="paymenthood-warning-notice__header">
 						<span class="paymenthood-warning-notice__icon" aria-hidden="true">&#9888;</span>
-						<span class="paymenthood-warning-notice__eyebrow">Action required &mdash; Webhook unreachable on localhost</span>
+						<span class="paymenthood-warning-notice__eyebrow"><?php esc_html_e( 'Action required — Webhook unreachable on localhost', 'paymenthood' ); ?></span>
 					</div>
 					<div class="paymenthood-warning-notice__body-wrap">
-						<p class="paymenthood-warning-notice__title">PaymentHood cannot receive live payment webhooks.</p>
+						<p class="paymenthood-warning-notice__title"><?php esc_html_e( 'PaymentHood cannot receive live payment webhooks.', 'paymenthood' ); ?></p>
 						<p class="paymenthood-warning-notice__body">
-							Your store is currently using a <strong>localhost callback URL</strong>. Payment webhooks cannot reach localhost from outside your machine. Use a public domain or a tunnel such as Cloudflare Tunnel or ngrok before accepting live payments.
-							<a href="https://github.com/paymenthood/paymenthood-docs/blob/main/CLOUDFLARE-TUNNEL-INSTRUCTIONS.md" target="_blank" rel="noopener noreferrer">Learn how to set up a Cloudflare Tunnel &rarr;</a>
+							<?php
+							echo wp_kses(
+								__( 'Your store is currently using a <strong>localhost callback URL</strong>. Payment webhooks cannot reach localhost from outside your machine. Use a public domain or a tunnel such as Cloudflare Tunnel or ngrok before accepting live payments.', 'paymenthood' ),
+								array( 'strong' => array() )
+							);
+							?>
+							<a href="https://github.com/paymenthood/paymenthood-docs/blob/main/CLOUDFLARE-TUNNEL-INSTRUCTIONS.md" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Learn how to set up a Cloudflare Tunnel →', 'paymenthood' ); ?></a>
 						</p>
 						<p class="paymenthood-warning-notice__meta">
-							<span class="paymenthood-warning-notice__meta-label">Current webhook URL</span>
+							<span class="paymenthood-warning-notice__meta-label"><?php esc_html_e( 'Current webhook URL', 'paymenthood' ); ?></span>
 							<a class="paymenthood-warning-notice__link" href="<?php echo esc_url($webhook_url); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html($webhook_url); ?></a>
 						</p>
 					</div>
@@ -299,9 +304,10 @@ function paymenthood_init_gateway_class()
 				<?php
 			}
 
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only URL param set by the plugin itself after a successful setup redirect; no user-supplied data is processed.
 			if (
-				isset($_GET['paymenthood_setup']) &&
-				$_GET['paymenthood_setup'] === 'success'
+				isset($_GET['paymenthood_setup']) && // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				$_GET['paymenthood_setup'] === 'success' // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			) {
 				include plugin_dir_path(__FILE__) . 'templates/admin-notice-success.php';
 			}
@@ -377,7 +383,11 @@ function paymenthood_init_gateway_class()
 		// Plugin options
 		public function init_form_fields()
 		{
-			$return_url = $this->build_public_wc_api_url('paymenthood_setup');
+			$return_url = add_query_arg(
+				'paymenthood_state',
+				wp_create_nonce('paymenthood_setup_state'),
+				$this->build_public_wc_api_url('paymenthood_setup')
+			);
 			$setup_url = $this->paymenthood_panel_url . '/auth/signin?returnUrl=' . urlencode($return_url) . '&grantAuthorization=' . urlencode('true');
 
 			$saved_settings = get_option('woocommerce_' . $this->id . '_settings', array());
@@ -394,44 +404,44 @@ function paymenthood_init_gateway_class()
 
 			$this->form_fields = array(
 				'general_section' => array(
-					'title' => 'Checkout display',
+					'title' => __( 'Checkout display', 'paymenthood' ),
 					'type' => 'title',
 				),
 				'enabled' => array(
-					'title' => 'Availability',
+					'title' => __( 'Availability', 'paymenthood' ),
 					'type' => 'checkbox',
-					'label' => 'Enable PaymentHood at checkout',
+					'label' => __( 'Enable PaymentHood at checkout', 'paymenthood' ),
 					'default' => 'no'
 				),
 				'title' => array(
-					'title' => 'Checkout title',
+					'title' => __( 'Checkout title', 'paymenthood' ),
 					'type' => 'text',
-					'description' => 'Shown to customers in the list of payment methods during checkout.',
-					'default' => 'PaymentHood',
+					'description' => __( 'Shown to customers in the list of payment methods during checkout.', 'paymenthood' ),
+					'default' => __( 'PaymentHood', 'paymenthood' ),
 					'desc_tip' => true,
 				),
 				'description' => array(
-					'title' => 'Checkout description',
+					'title' => __( 'Checkout description', 'paymenthood' ),
 					'type' => 'textarea',
-					'description' => 'Short helper text shown under the payment method title at checkout.',
-					'default' => 'Simply pay via our payment gateway.',
+					'description' => __( 'Short helper text shown under the payment method title at checkout.', 'paymenthood' ),
+					'default' => __( 'Simply pay via our payment gateway.', 'paymenthood' ),
 					'css' => 'min-height: 90px;',
 				),
 				'setup_status' => array(
-					'title' => 'Account connection',
+					'title' => __( 'Account connection', 'paymenthood' ),
 					'type' => 'paymenthood_setup_status',
 					'setup_completed' => $setup_completed,
 					'setup_url' => $setup_url,
 				),
 				'supported_gateways' => array(
-					'title' => 'Supported gateways',
+					'title' => __( 'Supported gateways', 'paymenthood' ),
 					'type' => 'paymenthood_supported_gateways',
 				),
 			);
 
 			if ($setup_completed) {
 				$this->form_fields['app_setup'] = array(
-					'title' => 'Gateway setup',
+					'title' => __( 'Gateway setup', 'paymenthood' ),
 					'type' => 'paymenthood_app_setup',
 					'sandbox_app_id' => $sandbox_app_id,
 					'sandbox_token' => $sandbox_token,
@@ -440,11 +450,11 @@ function paymenthood_init_gateway_class()
 				);
 
 				$this->form_fields['testmode'] = array(
-					'title' => 'Active environment',
+					'title' => __( 'Active environment', 'paymenthood' ),
 					'type' => 'checkbox',
-					'label' => 'Use sandbox credentials for checkout',
+					'label' => __( 'Use sandbox credentials for checkout', 'paymenthood' ),
 					'default' => 'yes',
-					'description' => 'Keep this enabled while testing. When you are ready to run production payments, uncheck it to use your live configuration.',
+					'description' => __( 'Keep this enabled while testing. When you are ready to run production payments, uncheck it to use your live configuration.', 'paymenthood' ),
 				);
 			}
 		}
@@ -460,10 +470,12 @@ function paymenthood_init_gateway_class()
 			);
 			$data = wp_parse_args($data, $defaults);
 
-			$button_text = $data['setup_completed'] ? 'Reconnect PaymentHood' : 'Complete setup';
+			$button_text = $data['setup_completed']
+				? __( 'Reconnect PaymentHood', 'paymenthood' )
+				: __( 'Complete setup', 'paymenthood' );
 			$hero_title = $data['setup_completed']
-				? 'PaymentHood is connected and ready'
-				: 'PaymentHood checkout is currently hidden';
+				? __( 'PaymentHood is connected and ready', 'paymenthood' )
+				: __( 'PaymentHood checkout is currently hidden', 'paymenthood' );
 
 			ob_start();
 			?>
@@ -476,7 +488,7 @@ function paymenthood_init_gateway_class()
 						<div class="paymenthood-settings-card__compact">
 							<div class="paymenthood-brand-lockup">
 								<?php if ($logo_url) : ?>
-									<img class="paymenthood-brand-lockup__logo" src="<?php echo esc_url($logo_url); ?>" alt="PaymentHood logo">
+									<img class="paymenthood-brand-lockup__logo" src="<?php echo esc_url($logo_url); ?>" alt="<?php esc_attr_e( 'PaymentHood logo', 'paymenthood' ); ?>">
 								<?php else : ?>
 									<div class="paymenthood-brand-lockup__mark" aria-hidden="true">PH</div>
 								<?php endif; ?>
@@ -535,13 +547,13 @@ function paymenthood_init_gateway_class()
 
 			$environments = array(
 				'sandbox' => array(
-					'label' => 'Sandbox',
+					'label' => __( 'Sandbox', 'paymenthood' ),
 					'app_id' => $data['sandbox_app_id'],
 					'details' => $sandbox_details,
 					'css_mod' => 'sandbox',
 				),
 				'live' => array(
-					'label' => 'Live',
+					'label' => __( 'Live', 'paymenthood' ),
 					'app_id' => $data['live_app_id'],
 					'details' => $live_details,
 					'css_mod' => 'live',
@@ -565,15 +577,17 @@ function paymenthood_init_gateway_class()
 							$status_mod = $is_setup_completed ? 'complete' : 'pending';
 
 							if ($is_setup_completed) {
-								$action_label = 'Manage gateways in ' . $env['label'];
+								/* translators: %s: environment label (Sandbox or Live). */
+								$action_label = sprintf( __( 'Manage gateways in %s', 'paymenthood' ), $env['label'] );
 								$action_url = rtrim($this->paymenthood_panel_url, '/') . '/' . rawurlencode($env['app_id']) . '/gateways';
 								$action_class = 'button button-secondary';
-								$status_text = 'Setup complete';
+								$status_text = __( 'Setup complete', 'paymenthood' );
 							} else {
-								$action_label = 'PaymentHood Setup Complete &#8212; ' . $env['label'];
+								/* translators: %s: environment label (Sandbox or Live). */
+								$action_label = sprintf( __( 'PaymentHood Setup Complete — %s', 'paymenthood' ), $env['label'] );
 								$action_url = rtrim($this->paymenthood_panel_url, '/') . '/' . rawurlencode($env['app_id']);
 								$action_class = 'button button-primary';
-								$status_text = 'Setup incomplete';
+								$status_text = __( 'Setup incomplete', 'paymenthood' );
 							}
 							?>
 							<div class="paymenthood-env-card paymenthood-env-card--<?php echo esc_attr($env['css_mod']); ?> paymenthood-env-card--<?php echo esc_attr($status_mod); ?>">
@@ -597,7 +611,7 @@ function paymenthood_init_gateway_class()
 								</div>
 								<?php else : ?>
 								<div class="paymenthood-env-card__body paymenthood-env-card__error">
-									Unable to load app details. Please check your connection.
+									<?php esc_html_e( 'Unable to load app details. Please check your connection.', 'paymenthood' ); ?>
 								</div>
 								<?php endif; ?>
 							</div>
@@ -630,7 +644,7 @@ function paymenthood_init_gateway_class()
 						<?php if (!empty($supported_methods)) : ?>
 							<?php $this->render_supported_provider_chips($supported_methods, 'paymenthood-provider-strip--grid'); ?>
 						<?php else : ?>
-							<p class="paymenthood-supported-gateways-row__empty">No provider icons are available from PaymentHood yet.</p>
+							<p class="paymenthood-supported-gateways-row__empty"><?php esc_html_e( 'No provider icons are available from PaymentHood yet.', 'paymenthood' ); ?></p>
 						<?php endif; ?>
 					</div>
 				</td>
@@ -658,8 +672,8 @@ function paymenthood_init_gateway_class()
 				</th>
 				<td class="forminp">
 					<div class="paymenthood-settings-actions">
-						<a class="button button-secondary paymenthood-settings-actions__button" href="<?php echo esc_url($data['manage_sandbox_url']); ?>" target="_blank" rel="noopener noreferrer" title="Manage Sandbox Gateways in PaymentHood Console">Manage Sandbox Gateways</a>
-						<a class="button button-secondary paymenthood-settings-actions__button" href="<?php echo esc_url($data['manage_live_url']); ?>" target="_blank" rel="noopener noreferrer" title="Manage Live Gateways in PaymentHood Console">Manage Live Gateways</a>
+						<a class="button button-secondary paymenthood-settings-actions__button" href="<?php echo esc_url($data['manage_sandbox_url']); ?>" target="_blank" rel="noopener noreferrer" title="<?php esc_attr_e( 'Manage Sandbox Gateways in PaymentHood Console', 'paymenthood' ); ?>"><?php esc_html_e( 'Manage Sandbox Gateways', 'paymenthood' ); ?></a>
+						<a class="button button-secondary paymenthood-settings-actions__button" href="<?php echo esc_url($data['manage_live_url']); ?>" target="_blank" rel="noopener noreferrer" title="<?php esc_attr_e( 'Manage Live Gateways in PaymentHood Console', 'paymenthood' ); ?>"><?php esc_html_e( 'Manage Live Gateways', 'paymenthood' ); ?></a>
 					</div>
 				</td>
 			</tr>
@@ -812,7 +826,7 @@ function paymenthood_init_gateway_class()
 
 		public function handle_provider_icon_proxy()
 		{
-			$encoded_url = isset($_GET['url']) ? sanitize_text_field(wp_unslash($_GET['url'])) : '';
+			$encoded_url = isset($_GET['url']) ? sanitize_text_field(wp_unslash($_GET['url'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Public AJAX icon proxy; reads a URL param to fetch a provider image, no data is saved.
 			$padding = strlen($encoded_url) % 4;
 
 			if ($padding > 0) {
@@ -833,7 +847,7 @@ function paymenthood_init_gateway_class()
 				status_header(200);
 				header('Content-Type: ' . $cached['content_type']);
 				header('Cache-Control: public, max-age=21600');
-				echo base64_decode($cached['body']);
+				echo base64_decode( $cached['body'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped,WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Binary image data proxied from CDN; HTML escaping would corrupt it.
 				exit;
 			}
 
@@ -842,7 +856,6 @@ function paymenthood_init_gateway_class()
 				array(
 					'timeout' => 20,
 					'redirection' => 3,
-					'sslverify' => !(defined('WP_DEBUG') && WP_DEBUG),
 				)
 			);
 
@@ -873,7 +886,7 @@ function paymenthood_init_gateway_class()
 			status_header(200);
 			header('Content-Type: ' . $content_type);
 			header('Cache-Control: public, max-age=21600');
-			echo $body;
+			echo $body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary image data from wp_remote_get; HTML escaping would corrupt it.
 			exit;
 		}
 
@@ -889,7 +902,7 @@ function paymenthood_init_gateway_class()
 				return $title;
 			}
 
-			return esc_html($title) . ' <span class="paymenthood-sandbox-badge paymenthood-sandbox-badge--inline">Sandbox</span>';
+			return esc_html($title) . ' <span class="paymenthood-sandbox-badge paymenthood-sandbox-badge--inline">' . esc_html__( 'Sandbox', 'paymenthood' ) . '</span>';
 		}
 
 		public function add_sandbox_badge_to_order_payment_title($title, $order)
@@ -906,7 +919,7 @@ function paymenthood_init_gateway_class()
 				return $clean_title;
 			}
 
-			return esc_html($clean_title) . ' <span class="paymenthood-sandbox-badge paymenthood-sandbox-badge--inline">Sandbox</span>';
+			return esc_html($clean_title) . ' <span class="paymenthood-sandbox-badge paymenthood-sandbox-badge--inline">' . esc_html__( 'Sandbox', 'paymenthood' ) . '</span>';
 		}
 
 		public function payment_fields()
@@ -928,12 +941,12 @@ function paymenthood_init_gateway_class()
 			}
 			$strip_classes = trim('paymenthood-provider-strip ' . $strip_class);
 			?>
-			<div class="<?php echo esc_attr($strip_classes); ?>" aria-label="Supported payment providers">
+			<div class="<?php echo esc_attr($strip_classes); ?>" aria-label="<?php esc_attr_e( 'Supported payment providers', 'paymenthood' ); ?>">
 				<?php foreach ($supported_methods as $method) : ?>
 					<?php if (($method['type'] ?? '') === 'credit_card') : ?>
-						<div class="paymenthood-provider-chip paymenthood-provider-chip--card" title="Credit card">
+						<div class="paymenthood-provider-chip paymenthood-provider-chip--card" title="<?php esc_attr_e( 'Credit card', 'paymenthood' ); ?>">
 							<span class="paymenthood-provider-chip__card-icon" aria-hidden="true"></span>
-							<span class="paymenthood-provider-chip__label">Credit card</span>
+							<span class="paymenthood-provider-chip__label"><?php esc_html_e( 'Credit card', 'paymenthood' ); ?></span>
 						</div>
 					<?php else : ?>
 						<?php
@@ -943,13 +956,12 @@ function paymenthood_init_gateway_class()
 							continue;
 						}
 						?>
-						<div class="paymenthood-provider-chip" title="<?php echo esc_attr($label); ?>">
+						<div class="paymenthood-provider-chip<?php echo $icon_url !== '' ? ' paymenthood-provider-chip--loading' : ''; ?>" title="<?php echo esc_attr($label); ?>">
 							<?php if ($icon_url !== '') : ?>
 								<img class="paymenthood-provider-chip__logo"
-									src="<?php echo esc_url($icon_url); ?>"
+									data-src="<?php echo esc_url($icon_url); ?>"
 									alt="<?php echo esc_attr($label); ?>"
-									width="84" height="26"
-									onerror="this.style.display='none';var lb=this.parentNode.querySelector('.paymenthood-provider-chip__label');if(lb)lb.style.display='';">
+									width="84" height="26">
 							<?php endif; ?>
 							<span class="paymenthood-provider-chip__label" <?php if ($icon_url !== '') : ?>style="display:none"<?php endif; ?>><?php echo esc_html($label); ?></span>
 						</div>
@@ -1054,8 +1066,31 @@ function paymenthood_init_gateway_class()
 				'paymenthood-admin-settings',
 				plugins_url('assets/css/paymenthood-admin.css', __FILE__),
 				array(),
-				'1.0.8'
+				'1.1.0'
 			);
+
+			if ($this->is_paymenthood_settings_page()) {
+				wp_register_script( 'paymenthood-admin-settings', false, array(), '1.0.0', true );
+				wp_enqueue_script( 'paymenthood-admin-settings' );
+				wp_add_inline_script(
+					'paymenthood-admin-settings',
+					'(function () {
+	var imgs = document.querySelectorAll(\'.paymenthood-provider-chip--loading img[data-src]\');
+	imgs.forEach(function (img) {
+		img.onload = function () {
+			this.parentNode.classList.remove(\'paymenthood-provider-chip--loading\');
+		};
+		img.onerror = function () {
+			this.parentNode.classList.remove(\'paymenthood-provider-chip--loading\');
+			this.style.display = \'none\';
+			var lb = this.parentNode.querySelector(\'.paymenthood-provider-chip__label\');
+			if (lb) lb.style.display = \'\';
+		};
+		img.src = img.dataset.src;
+	});
+})()'
+				);
+			}
 
 			if ($this->is_paymenthood_payments_list_page()) {
 				$this->enqueue_payments_list_provider_logos();
@@ -1094,90 +1129,72 @@ function paymenthood_init_gateway_class()
 			$max_visible = 5;
 			$is_testmode = $this->testmode ? 'true' : 'false';
 
-			$script = <<<JS
-(function () {
-	var providers = {$providers_json};
-	var MAX_VISIBLE = {$max_visible};
-	var isTestMode = {$is_testmode};
-	console.log('[PaymentHood] provider strip script loaded with', providers.length, 'providers');
-
-	function buildStrip() {
-		var wrap = document.createElement('div');
-		wrap.className = 'paymenthood-provider-strip-admin';
-
-		var envBadge = document.createElement('span');
-		envBadge.className = isTestMode
-			? 'paymenthood-env-badge paymenthood-env-badge--sandbox'
-			: 'paymenthood-env-badge paymenthood-env-badge--live';
-		envBadge.textContent = isTestMode ? 'Test Mode' : 'Live';
-		wrap.appendChild(envBadge);
-
-		var visible = providers.slice(0, MAX_VISIBLE);
-		var overflow = providers.length - MAX_VISIBLE;
-
-		visible.forEach(function (p) {
-			var img = document.createElement('img');
-			img.src = p.icon;
-			img.alt = p.title;
-			img.title = p.title;
-			img.className = 'paymenthood-provider-strip-admin__icon';
-			wrap.appendChild(img);
-		});
-
-		if (overflow > 0) {
-			var badge = document.createElement('span');
-			badge.className = 'paymenthood-provider-strip-admin__overflow';
-			badge.textContent = '+' + overflow;
-			wrap.appendChild(badge);
-		}
-
-		return wrap;
-	}
-
-	function findPaymenthoodRow() {
-		var row = document.getElementById('paymenthood');
-
-		if (row) {
-			return row;
-		}
-
-		var settingsLink = document.querySelector('a[href*="page=wc-settings"][href*="section=paymenthood"]');
-
-		if (settingsLink) {
-			return settingsLink.closest('.woocommerce-item__payment-gateway, .woocommerce-list__item');
-		}
-
-		return null;
-	}
-
-	function attachStrip() {
-		var row = findPaymenthoodRow();
-
-		if (!row) {
-			return;
-		}
-
-		// Re-check on every mutation: if React replaced the row, our flag is gone.
-		if (row.querySelector(':scope > .woocommerce-list__item-inner .paymenthood-provider-strip-admin')) {
-			return;
-		}
-
-		var desc = row.querySelector('.woocommerce-list__item-content');
-
-		if (!desc || !desc.parentNode) {
-			return;
-		}
-
-		desc.parentNode.insertBefore(buildStrip(), desc.nextSibling);
-		console.log('[PaymentHood] provider strip attached');
-	}
-
-	attachStrip();
-
-	var observer = new MutationObserver(attachStrip);
-	observer.observe(document.body, { childList: true, subtree: true });
-})();
-JS;
+			$script = sprintf(
+				"(function () {\n" .
+				"\tvar providers = %s;\n" .
+				"\tvar MAX_VISIBLE = %d;\n" .
+				"\tvar isTestMode = %s;\n" .
+				"\n" .
+				"\tfunction buildStrip() {\n" .
+				"\t\tvar wrap = document.createElement('div');\n" .
+				"\t\twrap.className = 'paymenthood-provider-strip-admin';\n" .
+				"\n" .
+				"\t\tvar envBadge = document.createElement('span');\n" .
+				"\t\tenvBadge.className = isTestMode\n" .
+				"\t\t\t? 'paymenthood-env-badge paymenthood-env-badge--sandbox'\n" .
+				"\t\t\t: 'paymenthood-env-badge paymenthood-env-badge--live';\n" .
+				"\t\tenvBadge.textContent = isTestMode ? 'Test Mode' : 'Live';\n" .
+				"\t\twrap.appendChild(envBadge);\n" .
+				"\n" .
+				"\t\tvar visible = providers.slice(0, MAX_VISIBLE);\n" .
+				"\t\tvar overflow = providers.length - MAX_VISIBLE;\n" .
+				"\n" .
+				"\t\tvisible.forEach(function (p) {\n" .
+				"\t\t\tvar img = document.createElement('img');\n" .
+				"\t\t\timg.src = p.icon;\n" .
+				"\t\t\timg.alt = p.title;\n" .
+				"\t\t\timg.title = p.title;\n" .
+				"\t\t\timg.className = 'paymenthood-provider-strip-admin__icon';\n" .
+				"\t\t\twrap.appendChild(img);\n" .
+				"\t\t});\n" .
+				"\n" .
+				"\t\tif (overflow > 0) {\n" .
+				"\t\t\tvar badge = document.createElement('span');\n" .
+				"\t\t\tbadge.className = 'paymenthood-provider-strip-admin__overflow';\n" .
+				"\t\t\tbadge.textContent = '+' + overflow;\n" .
+				"\t\t\twrap.appendChild(badge);\n" .
+				"\t\t}\n" .
+				"\n" .
+				"\t\treturn wrap;\n" .
+				"\t}\n" .
+				"\n" .
+				"\tfunction findPaymenthoodRow() {\n" .
+				"\t\tvar row = document.getElementById('paymenthood');\n" .
+				"\t\tif (row) { return row; }\n" .
+				"\t\tvar settingsLink = document.querySelector('a[href*=\"page=wc-settings\"][href*=\"section=paymenthood\"]');\n" .
+				"\t\tif (settingsLink) {\n" .
+				"\t\t\treturn settingsLink.closest('.woocommerce-item__payment-gateway, .woocommerce-list__item');\n" .
+				"\t\t}\n" .
+				"\t\treturn null;\n" .
+				"\t}\n" .
+				"\n" .
+				"\tfunction attachStrip() {\n" .
+				"\t\tvar row = findPaymenthoodRow();\n" .
+				"\t\tif (!row) { return; }\n" .
+				"\t\tif (row.querySelector(':scope > .woocommerce-list__item-inner .paymenthood-provider-strip-admin')) { return; }\n" .
+				"\t\tvar desc = row.querySelector('.woocommerce-list__item-content');\n" .
+				"\t\tif (!desc || !desc.parentNode) { return; }\n" .
+				"\t\tdesc.parentNode.insertBefore(buildStrip(), desc.nextSibling);\n" .
+				"\t}\n" .
+				"\n" .
+				"\tattachStrip();\n" .
+				"\tvar observer = new MutationObserver(attachStrip);\n" .
+				"\tobserver.observe(document.body, { childList: true, subtree: true });\n" .
+				"})();",
+				$providers_json,
+				$max_visible,
+				$is_testmode
+			);
 
 			wp_enqueue_script('jquery');
 			wp_add_inline_script('jquery', $script, 'after');
@@ -1207,9 +1224,10 @@ JS;
 
 		protected function is_paymenthood_settings_page()
 		{
-			$page = isset($_GET['page']) ? sanitize_text_field(wp_unslash($_GET['page'])) : '';
-			$tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : '';
-			$section = isset($_GET['section']) ? sanitize_text_field(wp_unslash($_GET['section'])) : '';
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only page-detection helper; only checks URL params to determine which admin screen is active, no data is processed.
+			$page    = isset($_GET['page'])    ? sanitize_text_field(wp_unslash($_GET['page']))    : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$tab     = isset($_GET['tab'])     ? sanitize_text_field(wp_unslash($_GET['tab']))     : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$section = isset($_GET['section']) ? sanitize_text_field(wp_unslash($_GET['section'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 			return $page === 'wc-settings'
 				&& in_array($tab, array('checkout', 'payment-gateways'), true)
@@ -1218,9 +1236,10 @@ JS;
 
 		protected function is_paymenthood_payments_list_page()
 		{
-			$page = isset($_GET['page']) ? sanitize_text_field(wp_unslash($_GET['page'])) : '';
-			$tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : '';
-			$section = isset($_GET['section']) ? sanitize_text_field(wp_unslash($_GET['section'])) : '';
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only page-detection helper; only checks URL params to determine which admin screen is active, no data is processed.
+			$page    = isset($_GET['page'])    ? sanitize_text_field(wp_unslash($_GET['page']))    : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$tab     = isset($_GET['tab'])     ? sanitize_text_field(wp_unslash($_GET['tab']))     : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$section = isset($_GET['section']) ? sanitize_text_field(wp_unslash($_GET['section'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 			return $page === 'wc-settings'
 				&& in_array($tab, array('checkout', 'payment-gateways'), true)
@@ -1229,14 +1248,15 @@ JS;
 
 		protected function is_paymenthood_enable_route()
 		{
-			$page = isset($_GET['page']) ? sanitize_text_field(wp_unslash($_GET['page'])) : '';
-			$tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : '';
-			$section = isset($_GET['section']) ? sanitize_text_field(wp_unslash($_GET['section'])) : '';
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only page-detection helper; only checks URL params to determine which admin screen is active, no data is processed.
+			$page    = isset($_GET['page'])    ? sanitize_text_field(wp_unslash($_GET['page']))    : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$tab     = isset($_GET['tab'])     ? sanitize_text_field(wp_unslash($_GET['tab']))     : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$section = isset($_GET['section']) ? sanitize_text_field(wp_unslash($_GET['section'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 			return $page === 'wc-settings'
 				&& in_array($tab, array('checkout', 'payment-gateways'), true)
 				&& $section === $this->id
-				&& isset($_GET['toggle_enabled']);
+				&& isset($_GET['toggle_enabled']); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		}
 
 		protected function get_public_base_url(): string
@@ -1244,7 +1264,7 @@ JS;
 			$request_host = $this->get_request_public_host();
 			$forwarded_proto = $this->get_forwarded_server_value('HTTP_X_FORWARDED_PROTO');
 			$is_https = (
-				(!empty($_SERVER['HTTPS']) && strtolower((string) wp_unslash($_SERVER['HTTPS'])) !== 'off')
+				(!empty($_SERVER['HTTPS']) && sanitize_key(wp_unslash($_SERVER['HTTPS'])) !== 'off')
 				|| $forwarded_proto === 'https'
 			);
 			$home_path = (string) wp_parse_url(home_url('/'), PHP_URL_PATH);
@@ -1279,7 +1299,7 @@ JS;
 				return $original_host;
 			}
 
-			$host = isset($_SERVER['HTTP_HOST']) ? strtolower((string) wp_unslash($_SERVER['HTTP_HOST'])) : '';
+			$host = isset($_SERVER['HTTP_HOST']) ? strtolower(sanitize_text_field(wp_unslash($_SERVER['HTTP_HOST']))) : '';
 
 			return $host !== '' ? preg_replace('/:\\d+$/', '', $host) : '';
 		}
@@ -1290,7 +1310,7 @@ JS;
 				return '';
 			}
 
-			$value = strtolower(trim((string) wp_unslash($_SERVER[$key])));
+			$value = strtolower(sanitize_text_field(wp_unslash($_SERVER[$key])));
 
 			if ($value === '') {
 				return '';
@@ -1437,7 +1457,7 @@ JS;
 				return;
 			}
 			?>
-			<section class="ph-pending-card" aria-label="Complete your PaymentHood payment">
+			<section class="ph-pending-card" aria-label="<?php esc_attr_e( 'Complete your PaymentHood payment', 'paymenthood' ); ?>">
 				<div class="ph-pending-card__header">
 					<div class="ph-pending-card__brand">
 						<span class="ph-pending-card__brand-dot" aria-hidden="true"></span>
@@ -1445,7 +1465,7 @@ JS;
 					</div>
 					<span class="ph-pending-card__badge">
 						<span class="ph-pending-card__badge-dot" aria-hidden="true"></span>
-						Awaiting payment
+						<?php esc_html_e( 'Awaiting payment', 'paymenthood' ); ?>
 					</span>
 				</div>
 				<div class="ph-pending-card__body">
@@ -1453,14 +1473,14 @@ JS;
 						<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
 					</div>
 					<div class="ph-pending-card__copy">
-						<h2 class="ph-pending-card__title">Your payment is pending</h2>
-						<p class="ph-pending-card__desc">Your order is reserved and waiting for payment confirmation. Return to PaymentHood to securely complete this payment.</p>
+						<h2 class="ph-pending-card__title"><?php esc_html_e( 'Your payment is pending', 'paymenthood' ); ?></h2>
+						<p class="ph-pending-card__desc"><?php esc_html_e( 'Your order is reserved and waiting for payment confirmation. Return to PaymentHood to securely complete this payment.', 'paymenthood' ); ?></p>
 					</div>
 				</div>
 				<div class="ph-pending-card__footer">
 					<a class="ph-pending-card__cta" href="<?php echo esc_url($redirect_url); ?>">
 						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-						Continue to secure payment
+						<?php esc_html_e( 'Continue to secure payment', 'paymenthood' ); ?>
 						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
 					</a>
 				</div>
@@ -1472,13 +1492,13 @@ JS;
 		{
 			// Detect current order — supports both classic posts editor and HPOS
 			$order_id = 0;
-			if (isset($_GET['post']) && 'shop_order' === get_post_type((int) $_GET['post'])) {
-				$order_id = (int) $_GET['post'];
+			if (isset($_GET['post']) && 'shop_order' === get_post_type((int) $_GET['post'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only order detection to display a contextual admin notice; no data is saved.
+				$order_id = (int) $_GET['post']; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			} elseif (
-				isset($_GET['id'], $_GET['page'])
-				&& 'wc-orders' === sanitize_key($_GET['page'])
+				isset($_GET['id'], $_GET['page']) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				&& 'wc-orders' === sanitize_key($_GET['page']) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			) {
-				$order_id = (int) $_GET['id'];
+				$order_id = (int) $_GET['id']; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			}
 
 			if (!$order_id) {
@@ -1496,12 +1516,18 @@ JS;
 				&& !in_array($order->get_status(), ['refunded', 'cancelled', 'failed'], true)
 			) {
 				$provider_name  = $order->get_meta('_paymenthood_provider_name');
-				$provider_label = !empty($provider_name) ? $provider_name : 'the payment provider';
+				$provider_label = !empty($provider_name) ? $provider_name : __( 'the payment provider', 'paymenthood' );
 				?>
 				<div class="notice notice-info" style="background-color:#e8f4fd;border-left-color:#2196f3;border-left-width:4px;">
 					<p>
-						<strong>&#8505; PaymentHood &mdash; Automatic refund supported</strong><br>
-						This payment supports automatic refunds via <strong><?php echo esc_html($provider_label); ?></strong>. If you process a refund, the funds will be returned to the customer&rsquo;s original payment method or bank account automatically.
+						<strong>&#8505; <?php esc_html_e( 'PaymentHood — Automatic refund supported', 'paymenthood' ); ?></strong><br>
+						<?php
+						printf(
+							/* translators: %s: payment provider name, wrapped in <strong> tags. */
+							esc_html__( 'This payment supports automatic refunds via %s. If you process a refund, the funds will be returned to the customer’s original payment method or bank account automatically.', 'paymenthood' ),
+							'<strong>' . esc_html( $provider_label ) . '</strong>'
+						);
+						?>
 					</p>
 				</div>
 				<?php
@@ -1512,8 +1538,13 @@ JS;
 				?>
 				<div class="notice notice-warning" style="background-color:#fff8e1;border-left-color:#f0ad4e;border-left-width:4px;">
 					<p>
-						<strong>&#9888; PaymentHood &mdash; Manual refund required</strong><br>
-						This payment provider does not support automatic refunds. The order has been marked as refunded in PaymentHood, but <strong>no money has been returned to the customer automatically</strong>. Please manually transfer the refund amount to the customer&rsquo;s bank account or original payment method.
+						<strong>&#9888; <?php esc_html_e( 'PaymentHood — Manual refund required', 'paymenthood' ); ?></strong><br>
+						<?php
+						echo wp_kses(
+							__( 'This payment provider does not support automatic refunds. The order has been marked as refunded in PaymentHood, but <strong>no money has been returned to the customer automatically</strong>. Please manually transfer the refund amount to the customer’s bank account or original payment method.', 'paymenthood' ),
+							array( 'strong' => array() )
+						);
+						?>
 					</p>
 				</div>
 				<?php
@@ -1578,7 +1609,7 @@ JS;
 
 			$this->log('Blocked PaymentHood enable toggle route from WooCommerce payments list', 'warning', array(
 				'page' => 'wc-settings',
-				'tab' => isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : '',
+				'tab' => isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : '', // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only logging of the current tab param; no data is saved.
 			));
 
 			$redirect_url = remove_query_arg('toggle_enabled');
@@ -1590,9 +1621,28 @@ JS;
 
 		public function setup_handler()
 		{
+			// Verify the acting user has permission to manage WooCommerce settings.
+			if (!current_user_can('manage_woocommerce')) {
+				wp_die(
+					esc_html__( 'You do not have permission to perform this action.', 'paymenthood' ),
+					esc_html__( 'Forbidden', 'paymenthood' ),
+					array( 'response' => 403 )
+				);
+			}
+
+			// Verify the state nonce to prevent CSRF on the OAuth-style callback.
+			$state = isset($_GET['paymenthood_state']) ? sanitize_text_field(wp_unslash($_GET['paymenthood_state'])) : '';
+			if (!wp_verify_nonce($state, 'paymenthood_setup_state')) {
+				wp_die(
+					esc_html__( 'Invalid or expired setup request. Please start the connection again from the PaymentHood settings page.', 'paymenthood' ),
+					esc_html__( 'PaymentHood Setup Error', 'paymenthood' ),
+					array( 'response' => 400, 'back_link' => true )
+				);
+			}
+
 			// Read params
-			$license_id = isset($_GET['licenseId']) ? wp_unslash($_GET['licenseId']) : '';
-			$authorization_code = isset($_GET['authorizationCode']) ? wp_unslash($_GET['authorizationCode']) : '';
+			$license_id = isset($_GET['licenseId']) ? sanitize_text_field(wp_unslash($_GET['licenseId'])) : '';
+			$authorization_code = isset($_GET['authorizationCode']) ? sanitize_text_field(wp_unslash($_GET['authorizationCode'])) : '';
 
 			$this->log('Starting setup process. LicenseId: ' . $license_id, 'info');
 
@@ -1602,7 +1652,7 @@ JS;
 
 				$this->paymenthood_render_admin_error_page(
 					'missing_parameters',
-					'authorizationCode and licenseId are required'
+					__( 'authorizationCode and licenseId are required.', 'paymenthood' )
 				);
 				exit;
 			}
@@ -1833,7 +1883,11 @@ JS;
 				$order->update_meta_data('_payment_service_payment_id', $payment_result['paymentId']);
 				$order->update_meta_data('_payment_service_redirect_url', $payment_result['redirectUrl']);
 				$order->add_order_note(
-					sprintf('PaymentHood payment initiated. Payment ID: %s', $payment_result['paymentId']),
+					sprintf(
+						/* translators: %s: PaymentHood payment ID. */
+						__( 'PaymentHood payment initiated. Payment ID: %s', 'paymenthood' ),
+						$payment_result['paymentId']
+					),
 					0,
 					true
 				);
@@ -1855,23 +1909,60 @@ JS;
 
 				$redirect_url = $payment_result['redirectUrl'];
 
-				$order->update_status('on-hold', 'Pending payment in PaymentHood.');
+				$order->update_status('on-hold', __( 'Pending payment in PaymentHood.', 'paymenthood' ));
 
 				return array(
 					'result' => 'success',
 					'redirect' => $redirect_url,
 				);
 			} else {
-				wc_add_notice('Error in payment process', 'Call admin for support.');
-				return;
+				wc_add_notice(
+					__( 'There was a problem starting your PaymentHood payment. Please try again or contact the store for assistance.', 'paymenthood' ),
+					'error'
+				);
+
+				return array(
+					'result'   => 'failure',
+					'messages' => __( 'There was a problem starting your PaymentHood payment. Please try again or contact the store for assistance.', 'paymenthood' ),
+				);
 			}
+		}
+
+		/**
+		 * Reads the Authorization header in a server-portable way.
+		 *
+		 * getallheaders() is only guaranteed on Apache; on nginx/FPM it may be
+		 * undefined (fatal). Prefer the $_SERVER superglobal and fall back gracefully.
+		 */
+		protected function get_request_authorization_header(): string
+		{
+			if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+				return sanitize_text_field(wp_unslash($_SERVER['HTTP_AUTHORIZATION']));
+			}
+
+			if (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+				return sanitize_text_field(wp_unslash($_SERVER['REDIRECT_HTTP_AUTHORIZATION']));
+			}
+
+			if (function_exists('getallheaders')) {
+				$headers = getallheaders();
+
+				if (is_array($headers)) {
+					foreach ($headers as $key => $value) {
+						if (strtolower((string) $key) === 'authorization') {
+							return trim((string) $value);
+						}
+					}
+				}
+			}
+
+			return '';
 		}
 
 		public function payment_webhook_handler()
 		{
 			try {
-				$headers = getallheaders();
-				$auth_header = trim($headers['Authorization'] ?? '');
+				$auth_header = $this->get_request_authorization_header();
 				$token = preg_match('/^Bearer\s+(\S+)$/i', $auth_header, $m) ? $m[1] : '';
 
 				if (empty($token) || !hash_equals($this->webhook_token, $token)) {
@@ -1890,10 +1981,10 @@ JS;
 					throw new \RuntimeException('Invalid JSON payload: ' . json_last_error_msg(), 400);
 				}
 
-				$order_id = (string) ($data['payment']['referenceId'] ?? '');
-				$payment_state = (string) ($data['payment']['paymentState'] ?? '');
+				$order_id = absint($data['payment']['referenceId'] ?? 0);
+				$payment_state = sanitize_key((string) ($data['payment']['paymentState'] ?? ''));
 
-				if ($order_id === '') {
+				if ($order_id === 0) {
 					throw new \RuntimeException('Missing referenceId in payload', 400);
 				}
 
@@ -1913,7 +2004,7 @@ JS;
 					'code'   => $e->getCode(),
 				]);
 				status_header($e->getCode() >= 400 ? $e->getCode() : 400);
-				exit($e->getMessage());
+				exit( esc_html( $e->getMessage() ) );
 			}
 		}
 
@@ -2026,7 +2117,7 @@ JS;
 				);
 				$this->notify_admin_disputed_order($order);
 			} else {
-				$order->update_status($new_order_status, 'Order status synced from PaymentHood.');
+				$order->update_status($new_order_status, __( 'Order status synced from PaymentHood.', 'paymenthood' ));
 			}
 
 			$this->log('Order status updated', 'info', [
@@ -2076,13 +2167,33 @@ JS;
 		{
 			$order_id   = $order->get_id();
 			$order_link = admin_url('post.php?post=' . $order_id . '&action=edit');
-			$subject    = sprintf('[%s] Payment dispute on order #%d', get_bloginfo('name'), $order_id);
+			$subject    = sprintf(
+				/* translators: 1: site name, 2: order number. */
+				__( '[%1$s] Payment dispute on order #%2$d', 'paymenthood' ),
+				get_bloginfo('name'),
+				$order_id
+			);
 			$message    = implode("\n\n", [
-				sprintf('A chargeback or payment dispute has been filed for order #%d.', $order_id),
-				'Review this order immediately. If the goods have not yet been shipped, put the order on hold and do not fulfil it until the dispute is resolved.',
-				'Order details: ' . $order_link,
-				sprintf('Customer: %s %s (%s)', $order->get_billing_first_name(), $order->get_billing_last_name(), $order->get_billing_email()),
-				sprintf('Order total: %s', wp_strip_all_tags(wc_price($order->get_total()))),
+				sprintf(
+					/* translators: %d: order number. */
+					__( 'A chargeback or payment dispute has been filed for order #%d.', 'paymenthood' ),
+					$order_id
+				),
+				__( 'Review this order immediately. If the goods have not yet been shipped, put the order on hold and do not fulfil it until the dispute is resolved.', 'paymenthood' ),
+				/* translators: %s: admin order edit URL. */
+				sprintf( __( 'Order details: %s', 'paymenthood' ), $order_link ),
+				sprintf(
+					/* translators: 1: customer first name, 2: customer last name, 3: customer email address. */
+					__( 'Customer: %1$s %2$s (%3$s)', 'paymenthood' ),
+					$order->get_billing_first_name(),
+					$order->get_billing_last_name(),
+					$order->get_billing_email()
+				),
+				sprintf(
+					/* translators: %s: formatted order total. */
+					__( 'Order total: %s', 'paymenthood' ),
+					wp_strip_all_tags(wc_price($order->get_total()))
+				),
 			]);
 
 			wp_mail(get_option('admin_email'), $subject, $message);
@@ -2097,7 +2208,7 @@ JS;
 			$order = wc_get_order($order_id);
 
 			if (!$order) {
-				return new WP_Error('invalid_order', 'Invalid order ID');
+				return new WP_Error('invalid_order', __( 'Invalid order ID.', 'paymenthood' ));
 			}
 
 			// PaymentHood only supports full-order refunds. Reject partial amounts.
@@ -2108,8 +2219,9 @@ JS;
 				return new WP_Error(
 					'partial_refund_not_supported',
 					sprintf(
-						'PaymentHood only supports full refunds. To refund this order, enter the full amount of %s.',
-						html_entity_decode( wp_strip_all_tags( wc_price( $order_total ) ) )
+						/* translators: %s: full order total amount. */
+						__( 'PaymentHood only supports full refunds. To refund this order, enter the full amount of %s.', 'paymenthood' ),
+						html_entity_decode( wp_strip_all_tags( wc_price( $order_total ) ), ENT_QUOTES | ENT_HTML5 )
 					)
 				);
 			}
@@ -2117,13 +2229,13 @@ JS;
 			$payment_id = $order->get_meta('_payment_service_payment_id');
 
 			if (empty($payment_id)) {
-				return new WP_Error('missing_payment_id', 'Payment ID not found.');
+				return new WP_Error('missing_payment_id', __( 'Payment ID not found.', 'paymenthood' ));
 			}
 
 			// Prevent duplicate refund calls
 			$lock_key = 'paymenthood_refund_lock_' . $order_id;
 			if (get_transient($lock_key)) {
-				return new WP_Error('refund_in_progress', 'Refund already in progress.');
+				return new WP_Error('refund_in_progress', __( 'Refund already in progress.', 'paymenthood' ));
 			}
 
 			set_transient($lock_key, 1, 60);
@@ -2140,7 +2252,7 @@ JS;
 
 			if (is_wp_error($check_body)) {
 				delete_transient($lock_key);
-				return new WP_Error('refund_check_failed', 'Unable to verify refund eligibility.');
+				return new WP_Error('refund_check_failed', __( 'Unable to verify refund eligibility.', 'paymenthood' ));
 			}
 
 			$can_refund = !empty($check_body['canRefund']);
@@ -2160,7 +2272,11 @@ JS;
 			}
 			$order->save_meta_data();
 
-			$base_description = sprintf('Refund for order #%s issued from WooCommerce.', $order_id);
+			$base_description = sprintf(
+				/* translators: %s: order number. */
+				__( 'Refund for order #%s issued from WooCommerce.', 'paymenthood' ),
+				$order_id
+			);
 			$description = trim($reason) !== ''
 				? $base_description . ' ' . trim($reason)
 				: $base_description;
@@ -2180,9 +2296,7 @@ JS;
 
 			if (!$can_refund) {
 				$order->add_order_note(
-					'⚠️ MANUAL REFUND REQUIRED: This payment provider does not support automatic refunds. ' .
-					'No money has been returned to the customer automatically. ' .
-					'You must manually transfer the refund amount to the customer\'s bank account or original payment method.',
+					'⚠️ ' . __( 'MANUAL REFUND REQUIRED: This payment provider does not support automatic refunds. No money has been returned to the customer automatically. You must manually transfer the refund amount to the customer’s bank account or original payment method.', 'paymenthood' ),
 					1 // visible to admin
 				);
 			}
@@ -2229,10 +2343,6 @@ JS;
 
 		protected function paymenthood_render_admin_error_page($code, $message)
 		{
-			status_header(400);
-			nocache_headers();
-
-			$css_url    = plugins_url('assets/css/paymenthood-admin.css', __FILE__);
 			$error_json = wp_json_encode(
 				array(
 					'error'   => $code,
@@ -2242,12 +2352,24 @@ JS;
 				JSON_PRETTY_PRINT
 			);
 
-			include plugin_dir_path(__FILE__) . 'templates/admin-error-page.php';
-			exit;
+			wp_die(
+				'<h1>' . esc_html__( 'Something went wrong', 'paymenthood' ) . '</h1>' .
+				'<p>' . esc_html__( 'Please contact the store administrator.', 'paymenthood' ) . '</p>' .
+				'<h3>' . esc_html__( 'Error details', 'paymenthood' ) . '</h3>' .
+				'<pre style="white-space:pre-wrap;word-break:break-all;">' . esc_html( $error_json ) . '</pre>',
+				esc_html__( 'PaymentHood Setup Error', 'paymenthood' ),
+				array( 'response' => 400, 'back_link' => true )
+			);
 		}
 
 		protected function log($message, $level = 'info', $context = [])
 		{
+			// Verbose levels are opt-in (WooCommerce best practice). Errors/warnings
+			// are always recorded so genuine failures remain diagnosable.
+			if (in_array($level, array('debug', 'info'), true) && !paymenthood_bootstrap_debug_enabled()) {
+				return;
+			}
+
 			if (!isset($this->logger)) {
 				$this->logger = wc_get_logger();
 			}
@@ -2265,6 +2387,11 @@ JS;
 // --- Display Fees next to order items (global scope) ---
 add_action('woocommerce_admin_order_totals_after_total', function($order_id){
     $order = wc_get_order($order_id);
+
+    if (!$order instanceof WC_Order) {
+        return;
+    }
+
     $provider_fee = (float) $order->get_meta('_provider_fee');
     $app_fee      = (float) $order->get_meta('_app_fee');
     $net_amount   = $order->get_meta('_net_amount');

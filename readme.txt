@@ -1,8 +1,8 @@
-=== PaymentHood Payment Gateway for WooCommerce ===
-Contributors: paymenthood
+=== PaymentHood ===
+Contributors: lukahood
 Tags: payment, woocommerce, payment gateway, checkout, paymenthood
 Requires at least: 6.0
-Tested up to: 6.7
+Tested up to: 7.0
 Requires PHP: 8.0
 Stable tag: 1.0.0
 License: GPLv3
@@ -26,7 +26,7 @@ PaymentHood is a multi-provider payment gateway for WooCommerce that lets mercha
 
 == Installation ==
 
-1. Upload the plugin files to the `/wp-content/plugins/paymenthood-payment-gateway` directory, or install the plugin through the WordPress Plugins screen.
+1. Upload the plugin files to the `/wp-content/plugins/paymenthood` directory, or install the plugin through the WordPress Plugins screen.
 2. Activate the plugin through the Plugins screen in WordPress.
 3. Go to **WooCommerce > Settings > Payments** and enable **PaymentHood**.
 4. Enter your PaymentHood License ID and Authorization Code, then save. The plugin will automatically retrieve your API credentials.
@@ -50,6 +50,22 @@ Yes. Enable sandbox mode in the gateway settings and provide your sandbox Licens
 
 Yes. The plugin declares full compatibility with WooCommerce High-Performance Order Storage (custom order tables).
 
+== Third-Party Services ==
+
+This plugin connects to the PaymentHood payment platform (https://www.paymenthood.com) to process payments, retrieve payment provider profiles, and handle refunds. The following data is transmitted to PaymentHood's servers:
+
+* License ID and Authorization Code — used during initial setup to obtain API credentials.
+* Order amount, currency, and order ID — sent when a payment session is created.
+* Refund amount and order ID — sent when a refund is requested.
+* Provider icon images — fetched from PaymentHood's CDN and proxied through your server for display in the checkout and admin settings.
+
+No customer personal data (names, addresses, card numbers) is transmitted directly by this plugin; customers are redirected to PaymentHood's hosted checkout page where payment details are entered and processed entirely by PaymentHood.
+
+By using this plugin you agree to PaymentHood's Terms of Service and Privacy Policy:
+
+* Terms of Service: https://www.paymenthood.com/terms
+* Privacy Policy: https://www.paymenthood.com/privacy
+
 == Screenshots ==
 
 1. PaymentHood payment settings page.
@@ -58,7 +74,17 @@ Yes. The plugin declares full compatibility with WooCommerce High-Performance Or
 
 == Changelog ==
 
-See changelog.txt for the full version history.
+= 1.0.0 =
+* Initial release of the PaymentHood Payment Gateway for WooCommerce.
+* Multi-provider hosted checkout page integration.
+* Automatic and manual refund support with admin notices.
+* Webhook-based real-time order status synchronisation.
+* Sandbox (test) mode with separate credentials.
+* HPOS (High-Performance Order Storage) compatibility.
+* WooCommerce Blocks (Cart and Checkout) compatibility.
+* Per-order fee breakdown (provider fee, app fee, net amount).
+
+For the full version history, see changelog.txt.
 
 == Upgrade Notice ==
 

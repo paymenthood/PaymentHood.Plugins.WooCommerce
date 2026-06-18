@@ -4,7 +4,7 @@ defined( 'ABSPATH' ) || exit;
 
 use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType;
 
-final class WC_PaymentHood_Blocks extends AbstractPaymentMethodType
+final class PaymentHood_Blocks extends AbstractPaymentMethodType
 {
     protected $name = 'paymenthood';
     protected $gateway;
@@ -31,26 +31,34 @@ final class WC_PaymentHood_Blocks extends AbstractPaymentMethodType
     {
         wp_enqueue_style(
             'paymenthood-checkout',
-            plugins_url('assets/css/paymenthood-checkout.css', dirname(__DIR__) . '/payment-gateway.php'),
+            plugins_url('assets/css/paymenthood-checkout.css', dirname(__DIR__) . '/paymenthood.php'),
             [],
-            '1.0.3'
+            '1.0.4'
         );
 
         wp_enqueue_script(
             'wc-paymenthood-blocks-integration',
             plugins_url('src/index.js', __DIR__),
             ['wc-blocks-registry', 'wc-settings', 'wp-element', 'wp-i18n'],
-            '1.0.2',
+            '1.0.3',
             true
         );
+
+        if (function_exists('wp_set_script_translations')) {
+            wp_set_script_translations(
+                'wc-paymenthood-blocks-integration',
+                'paymenthood',
+                dirname(__DIR__) . '/languages'
+            );
+        }
 
         $settings = get_option('woocommerce_paymenthood_settings', []);
         wp_add_inline_script(
             'wc-paymenthood-blocks-integration',
             'window.wc = window.wc || {}; window.wc.wcSettings = window.wc.wcSettings || {}; window.wc.wcSettings["paymenthood_data"] = ' . wp_json_encode([
-                'title' => $settings['title'] ?? 'PaymentHood',
-                'description' => $settings['description'] ?? 'Pay securely using PaymentHood.',
-                'ariaLabel' => $settings['title'] ?? 'PaymentHood',
+                'title' => $settings['title'] ?? __( 'PaymentHood', 'paymenthood' ),
+                'description' => $settings['description'] ?? __( 'Pay securely using PaymentHood.', 'paymenthood' ),
+                'ariaLabel' => $settings['title'] ?? __( 'PaymentHood', 'paymenthood' ),
                 'logoUrl' => $this->get_logo_url(),
                 'isSandbox' => ($settings['testmode'] ?? 'yes') === 'yes',
                 'supportedMethods' => $this->gateway ? $this->gateway->get_supported_checkout_methods_for_display() : [],
@@ -65,9 +73,9 @@ final class WC_PaymentHood_Blocks extends AbstractPaymentMethodType
     {
         $settings = get_option('woocommerce_paymenthood_settings', []);
         return [
-            'title' => $settings['title'] ?? 'PaymentHood',
-            'description' => $settings['description'] ?? 'Pay securely using PaymentHood.',
-            'ariaLabel' => $settings['title'] ?? 'PaymentHood',
+            'title' => $settings['title'] ?? __( 'PaymentHood', 'paymenthood' ),
+            'description' => $settings['description'] ?? __( 'Pay securely using PaymentHood.', 'paymenthood' ),
+            'ariaLabel' => $settings['title'] ?? __( 'PaymentHood', 'paymenthood' ),
             'logoUrl' => $this->get_logo_url(),
             'isSandbox' => ($settings['testmode'] ?? 'yes') === 'yes',
             'supportedMethods' => $this->gateway ? $this->gateway->get_supported_checkout_methods_for_display() : [],
@@ -82,14 +90,14 @@ final class WC_PaymentHood_Blocks extends AbstractPaymentMethodType
             'wc-paymenthood-blocks-integration',
             plugins_url('src/index.js', __DIR__),
             ['wc-blocks-registry', 'wc-settings', 'wp-element', 'wp-i18n'],
-            null,
+            '1.0.3',
             true
         );
     }
 
     protected function get_logo_url()
     {
-        $base_file = dirname(__DIR__) . '/payment-gateway.php';
+        $base_file = dirname(__DIR__) . '/paymenthood.php';
         $logo_candidates = [
             'assets/images/paymenthood-blue.png',
             'assets/images/paymenthood-logo.svg',
