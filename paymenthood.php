@@ -1058,7 +1058,11 @@ function paymenthood_init_gateway_class()
 
 		public function enqueue_admin_assets()
 		{
-			if (!$this->is_paymenthood_settings_page() && !$this->is_paymenthood_payments_list_page()) {
+			if (
+				!$this->is_paymenthood_settings_page() &&
+				!$this->is_paymenthood_payments_list_page() &&
+				!$this->is_order_edit_page()
+			) {
 				return;
 			}
 
@@ -1066,7 +1070,7 @@ function paymenthood_init_gateway_class()
 				'paymenthood-admin-settings',
 				plugins_url('assets/css/paymenthood-admin.css', __FILE__),
 				array(),
-				'1.1.0'
+				'1.2.0'
 			);
 
 			if ($this->is_paymenthood_settings_page()) {
@@ -1257,6 +1261,21 @@ function paymenthood_init_gateway_class()
 				&& in_array($tab, array('checkout', 'payment-gateways'), true)
 				&& $section === $this->id
 				&& isset($_GET['toggle_enabled']); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		}
+
+		protected function is_order_edit_page(): bool
+		{
+			$screen = function_exists('get_current_screen') ? get_current_screen() : null;
+			if (!$screen) {
+				return false;
+			}
+			// HPOS order edit: ?page=wc-orders&action=edit&id=N
+			if ($screen->id === 'woocommerce_page_wc-orders') {
+				$action = isset($_GET['action']) ? sanitize_key($_GET['action']) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only page detection for asset enqueuing.
+				return $action === 'edit';
+			}
+			// Classic post-based order edit
+			return $screen->id === 'shop_order';
 		}
 
 		protected function get_public_base_url(): string
@@ -1563,16 +1582,37 @@ function paymenthood_init_gateway_class()
 				return;
 			}
 
-			$detail_url = rtrim($this->paymenthood_panel_url, '/') . '/'
+			$detail_url  = rtrim($this->paymenthood_panel_url, '/') . '/'
 				. rawurlencode($this->app_id)
 				. '/payments/detail?appId=' . rawurlencode($this->app_id)
 				. '&paymentId=' . rawurlencode($payment_id);
+			$logo_url    = plugins_url('assets/images/paymenthood-white.webp', __FILE__);
 			?>
-			<p class="form-field form-field-wide">
-				<label><?php esc_html_e('PaymentHood Payment ID', 'paymenthood'); ?></label>
-				<a href="<?php echo esc_url($detail_url); ?>" target="_blank" rel="noopener noreferrer"
-				   style="font-family:monospace;font-size:12px;word-break:break-all;"><?php echo esc_html($payment_id); ?></a>
-			</p>
+			<div class="paymenthood-order-card">
+				<div class="paymenthood-order-card__header">
+					<img class="paymenthood-order-card__logo"
+						src="<?php echo esc_url($logo_url); ?>"
+						alt="PaymentHood"
+						width="110" height="22">
+					<span class="paymenthood-order-card__badge">
+						<span class="paymenthood-order-card__badge-dot" aria-hidden="true"></span>
+						<?php esc_html_e( 'Payment Gateway', 'paymenthood' ); ?>
+					</span>
+				</div>
+				<div class="paymenthood-order-card__body">
+					<span class="paymenthood-order-card__label"><?php esc_html_e( 'Payment ID', 'paymenthood' ); ?></span>
+					<div class="paymenthood-order-card__id-row">
+						<span class="paymenthood-order-card__id"><?php echo esc_html($payment_id); ?></span>
+					</div>
+					<a href="<?php echo esc_url($detail_url); ?>"
+					   class="paymenthood-order-card__cta"
+					   target="_blank"
+					   rel="noopener noreferrer">
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+						<?php esc_html_e( 'View in PaymentHood Console', 'paymenthood' ); ?>
+					</a>
+				</div>
+			</div>
 			<?php
 		}
 

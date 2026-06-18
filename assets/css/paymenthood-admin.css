@@ -686,3 +686,118 @@ body {
         background-image: none;
     }
 }
+
+/* ── Order detail — PaymentHood payment card ────────────────────────── */
+
+.paymenthood-order-card {
+    margin: 14px 0 18px;
+    border-radius: 10px;
+    border: 1px solid #d1fae5;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07), 0 4px 16px rgba(22, 34, 24, 0.06);
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.paymenthood-order-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 16px;
+    background: linear-gradient(135deg, #1a3a24 0%, #2d5c38 100%);
+}
+
+.paymenthood-order-card__logo {
+    display: block;
+    height: 22px;
+    width: auto;
+}
+
+.paymenthood-order-card__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.65);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+
+.paymenthood-order-card__badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.22);
+    flex-shrink: 0;
+}
+
+.paymenthood-order-card__body {
+    padding: 14px 16px 16px;
+}
+
+.paymenthood-order-card__label {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 7px;
+}
+
+.paymenthood-order-card__id-row {
+    display: flex;
+    align-items: center;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 9px 13px;
+    margin-bottom: 13px;
+}
+
+.paymenthood-order-card__id {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+    letter-spacing: 0.01em;
+}
+
+.paymenthood-order-card__cta {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: 100%;
+    padding: 10px 16px !important;
+    background: linear-gradient(135deg, #1c5c33 0%, #2f8a4a 100%) !important;
+    color: #ffffff !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    border-radius: 7px !important;
+    border: none !important;
+    box-shadow: 0 2px 6px rgba(28, 92, 51, 0.28);
+    transition: filter 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.paymenthood-order-card__cta:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    color: #ffffff !important;
+    text-decoration: none !important;
+    box-shadow: 0 5px 16px rgba(28, 92, 51, 0.36);
+}
+
+.paymenthood-order-card__cta:active {
+    transform: translateY(0);
+    filter: brightness(0.96);
+}
+
+.paymenthood-order-card__cta svg {
+    flex-shrink: 0;
+}
