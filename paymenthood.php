@@ -4,10 +4,10 @@
  * Plugin URI:           https://www.paymenthood.com/integrations/woocommerce/
  * Description:          Accept payments via PaymentHood — a flexible, multi-provider payment gateway for WooCommerce.
  * Version:              1.0.0
- * Author:               PaymentHood
- * Author URI:           https://paymenthood.com
- * Developer:            PaymentHood
- * Developer URI:        https://paymenthood.com
+ * Author:               OmegaHood LLC
+ * Author URI:           https://www.paymenthood.com/about/
+ * Developer:            OmegaHood LLC
+ * Developer URI:        https://www.paymenthood.com/about/
  * Text Domain:          paymenthood
  * Domain Path:          /languages
  *
@@ -140,6 +140,28 @@ function paymenthood_init_gateway_class()
 		protected string $paymenthood_panel_url = "https://console.paymenthood.com";
 		protected string $paymenthood_payment_app_api_url = "https://appapi.paymenthood.com";
 		protected string $paymenthood_payment_api_url = "https://api.paymenthood.com";
+
+		/**
+		 * Largest provider icon the proxy will fetch or re-serve.
+		 */
+		protected const PROVIDER_ICON_MAX_BYTES = 512000;
+
+		/**
+		 * SVG elements the proxy will re-serve. Allowlist, not denylist: anything not
+		 * named here is dropped, so a newly discovered scripting element fails closed.
+		 *
+		 * Deliberately absent: script, foreignObject, a, image, iframe, embed, object,
+		 * and the animation elements (animate, set, handler...), all of which can
+		 * execute JavaScript or pull in external content.
+		 */
+		protected const PROVIDER_ICON_SVG_ELEMENTS = array(
+			'svg', 'g', 'defs', 'symbol', 'use', 'switch', 'title', 'desc', 'style',
+			'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon',
+			'text', 'tspan', 'textpath', 'marker',
+			'lineargradient', 'radialgradient', 'stop', 'pattern', 'clippath', 'mask',
+			'filter', 'fegaussianblur', 'feoffset', 'feblend', 'fecolormatrix',
+			'fecomposite', 'feflood', 'femerge', 'femergenode', 'fedropshadow',
+		);
 		protected string $app_id;
 		protected string $token;
 		protected string $webhook_token;
@@ -736,52 +758,158 @@ function paymenthood_init_gateway_class()
 				return '';
 			}
 
-			$cache_key = 'paymenthood_icon_proxy_' . md5($icon_url);
+			$icon = $this->fetch_provider_icon($icon_url);
+
+			if ($icon === null) {
+				return '';
+			}
+
+			return 'data:' . $icon['content_type'] . ';base64,' . base64_encode($icon['body']);
+		}
+
+		/**
+		 * Fetch, validate and cache a provider icon.
+		 *
+		 * Callers must have run the URL through is_allowed_provider_icon_url() first.
+		 *
+		 * @return array{content_type: string, body: string}|null Null when the response
+		 *                                                        is not a usable image.
+		 */
+		protected function fetch_provider_icon(string $icon_url)
+		{
+			// Cache key is versioned so that anything cached by an earlier, weaker
+			// version of this code is abandoned rather than re-served.
+			$cache_key = 'paymenthood_icon_proxy_v2_' . md5($icon_url);
 			$cached = get_transient($cache_key);
 
 			if (is_array($cached) && !empty($cached['content_type']) && isset($cached['body'])) {
-				return 'data:' . $cached['content_type'] . ';base64,' . $cached['body'];
+				return array(
+					'content_type' => (string) $cached['content_type'],
+					'body' => (string) base64_decode($cached['body']),
+				);
 			}
 
 			$response = wp_remote_get(
 				$icon_url,
 				array(
 					'timeout' => 20,
-					'redirection' => 3,
+					// The host allowlist is only applied to the URL above. Following a
+					// redirect would hand that check away to whoever answers the request,
+					// and would also make this a route into the merchant's private network.
+					'redirection' => 0,
+					'reject_unsafe_urls' => true,
+					'limit_response_size' => self::PROVIDER_ICON_MAX_BYTES,
 				)
 			);
 
 			$status_code = wp_remote_retrieve_response_code($response);
 			$body = wp_remote_retrieve_body($response);
-			$content_type = (string) wp_remote_retrieve_header($response, 'content-type');
 
 			if (is_wp_error($response) || $status_code !== 200 || $body === '') {
-				$this->log('Provider icon data URI request failed', 'warning', array(
+				$this->log('Provider icon request failed', 'warning', array(
 					'icon_url' => $icon_url,
 					'status_code' => $status_code,
+					'error' => is_wp_error($response) ? $response->get_error_message() : '',
 				));
 
-				return '';
+				return null;
 			}
 
-			$content_type = $this->detect_provider_icon_content_type($icon_url, $content_type, $body);
-			$encoded_body = base64_encode($body);
+			if (strlen($body) > self::PROVIDER_ICON_MAX_BYTES) {
+				$this->log('Provider icon exceeded the size limit', 'warning', array(
+					'icon_url' => $icon_url,
+					'bytes' => strlen($body),
+				));
+
+				return null;
+			}
+
+			// The type is decided by the bytes. The upstream Content-Type header and the
+			// URL extension are both controlled by whoever serves the file, so neither
+			// gets a say in what this plugin tells the merchant's visitors it is.
+			$content_type = $this->sniff_provider_icon_content_type($body);
+
+			if ($content_type === '') {
+				$this->log('Provider icon is not a recognised image format', 'warning', array(
+					'icon_url' => $icon_url,
+				));
+
+				return null;
+			}
+
+			if ($content_type === 'image/svg+xml') {
+				$sanitized = $this->sanitize_provider_icon_svg($body);
+
+				if ($sanitized === null) {
+					$this->log('Provider icon SVG failed sanitisation', 'warning', array(
+						'icon_url' => $icon_url,
+					));
+
+					return null;
+				}
+
+				$body = $sanitized;
+			}
 
 			set_transient(
 				$cache_key,
 				array(
 					'content_type' => $content_type,
-					'body' => $encoded_body,
+					'body' => base64_encode($body),
 				),
 				6 * HOUR_IN_SECONDS
 			);
 
-			return 'data:' . $content_type . ';base64,' . $encoded_body;
+			return array(
+				'content_type' => $content_type,
+				'body' => $body,
+			);
+		}
+
+		/**
+		 * Hosts permitted to serve provider icons through the proxy.
+		 *
+		 * Exact matches only. A suffix pattern such as `*.blob.core.windows.net` is not
+		 * a boundary: anyone can register an Azure Storage account, and this proxy
+		 * re-serves what it fetches from the *merchant's* origin, which would hand a
+		 * stranger the merchant's cookies and checkout DOM.
+		 *
+		 * @return string[] Lowercase hostnames.
+		 */
+		protected function get_allowed_provider_icon_hosts(): array
+		{
+			$hosts = array(
+				// The one storage account PaymentHood serves provider icons from.
+				'phpaymentstorageaccount.blob.core.windows.net',
+			);
+
+			/**
+			 * Filters the hosts allowed to serve provider icons.
+			 *
+			 * @param string[] $hosts Lowercase hostnames, compared by exact match.
+			 */
+			$hosts = apply_filters('paymenthood_allowed_provider_icon_hosts', $hosts);
+			$normalized = array();
+
+			foreach ((array) $hosts as $host) {
+				$host = strtolower(trim((string) $host));
+
+				if ($host !== '') {
+					$normalized[] = $host;
+				}
+			}
+
+			return $normalized;
 		}
 
 		protected function is_allowed_provider_icon_url(string $icon_url): bool
 		{
 			$parts = wp_parse_url($icon_url);
+
+			if (!is_array($parts)) {
+				return false;
+			}
+
 			$scheme = isset($parts['scheme']) ? strtolower((string) $parts['scheme']) : '';
 			$host = isset($parts['host']) ? strtolower((string) $parts['host']) : '';
 
@@ -789,39 +917,161 @@ function paymenthood_init_gateway_class()
 				return false;
 			}
 
-			return (bool) preg_match('/(^|\.)blob\.core\.windows\.net$/', $host);
-		}
-
-		protected function detect_provider_icon_content_type(string $icon_url, string $content_type, string $body): string
-		{
-			$normalized_content_type = strtolower(trim(strtok($content_type, ';')));
-
-			if (strpos($normalized_content_type, 'image/') === 0) {
-				return $normalized_content_type;
+			// Embedded credentials and off-port requests are not things a CDN fetch does.
+			if (isset($parts['user']) || isset($parts['pass'])) {
+				return false;
 			}
 
-			$leading_content = ltrim(substr($body, 0, 256));
+			if (isset($parts['port']) && (int) $parts['port'] !== 443) {
+				return false;
+			}
 
-			if (stripos($leading_content, '<svg') !== false || preg_match('/\.svg(?:$|\?)/i', $icon_url)) {
+			return in_array($host, $this->get_allowed_provider_icon_hosts(), true);
+		}
+
+		/**
+		 * Determine the content type from the response bytes alone.
+		 *
+		 * @return string Empty string when the bytes are not a supported image.
+		 */
+		protected function sniff_provider_icon_content_type(string $body): string
+		{
+			if (strncmp($body, "\x89PNG\r\n\x1a\n", 8) === 0) {
+				return 'image/png';
+			}
+
+			if (strncmp($body, "\xff\xd8\xff", 3) === 0) {
+				return 'image/jpeg';
+			}
+
+			if (strncmp($body, 'GIF87a', 6) === 0 || strncmp($body, 'GIF89a', 6) === 0) {
+				return 'image/gif';
+			}
+
+			if (strncmp($body, 'RIFF', 4) === 0 && substr($body, 8, 4) === 'WEBP') {
+				return 'image/webp';
+			}
+
+			// An SVG may open with a BOM, an XML prolog, a doctype or comments before
+			// the root element.
+			$prolog = '(?:<\?xml[^>]*\?>|<!DOCTYPE[^>\[]*>|<!--.*?-->|\s)*';
+
+			if (preg_match('/^(?:\xEF\xBB\xBF)?' . $prolog . '<svg[\s>]/is', substr($body, 0, 2048))) {
 				return 'image/svg+xml';
 			}
 
-			$path = wp_parse_url($icon_url, PHP_URL_PATH);
-			$extension = strtolower(pathinfo((string) $path, PATHINFO_EXTENSION));
+			return '';
+		}
 
-			switch ($extension) {
-				case 'png':
-					return 'image/png';
-				case 'jpg':
-				case 'jpeg':
-					return 'image/jpeg';
-				case 'gif':
-					return 'image/gif';
-				case 'webp':
-					return 'image/webp';
+		/**
+		 * Strip everything scriptable out of an SVG.
+		 *
+		 * Elements are filtered against an allowlist; attributes are filtered for the
+		 * known script carriers. Returns null when the document cannot be parsed or is
+		 * not rooted at <svg>, so an unparseable file is never served.
+		 *
+		 * @return string|null
+		 */
+		protected function sanitize_provider_icon_svg(string $svg)
+		{
+			if (!class_exists('DOMDocument')) {
+				return null;
 			}
 
-			return 'application/octet-stream';
+			// An internal DTD subset is the XXE vector, and no logo needs one.
+			if (stripos($svg, '<!ENTITY') !== false) {
+				return null;
+			}
+
+			$previous_errors = libxml_use_internal_errors(true);
+			$document = new DOMDocument();
+			// No LIBXML_NOENT: entities must not be expanded. LIBXML_NONET blocks
+			// external fetches during parsing.
+			$loaded = $document->loadXML($svg, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
+			libxml_clear_errors();
+			libxml_use_internal_errors($previous_errors);
+
+			if (!$loaded || !($document->documentElement instanceof DOMElement)) {
+				return null;
+			}
+
+			if (strtolower($document->documentElement->localName) !== 'svg') {
+				return null;
+			}
+
+			$this->sanitize_provider_icon_svg_element($document->documentElement);
+
+			// Serialising the root element alone drops any doctype or stray prolog.
+			$sanitized = $document->saveXML($document->documentElement);
+
+			return is_string($sanitized) && $sanitized !== '' ? $sanitized : null;
+		}
+
+		protected function sanitize_provider_icon_svg_element(DOMElement $element)
+		{
+			foreach (iterator_to_array($element->childNodes) as $child) {
+				if ($child instanceof DOMElement) {
+					if (!in_array(strtolower($child->localName), self::PROVIDER_ICON_SVG_ELEMENTS, true)) {
+						$element->removeChild($child);
+						continue;
+					}
+
+					$this->sanitize_provider_icon_svg_element($child);
+					continue;
+				}
+
+				if ($child instanceof DOMProcessingInstruction) {
+					$element->removeChild($child);
+				}
+			}
+
+			// <style> can pull in external resources through @import or url().
+			if (strtolower($element->localName) === 'style'
+				&& preg_match('/@import|url\s*\(|expression\s*\(/i', $element->textContent)) {
+				$element->textContent = '';
+			}
+
+			foreach (iterator_to_array($element->attributes) as $attribute) {
+				if (!$this->is_allowed_provider_icon_svg_attribute($attribute)) {
+					if ($attribute->namespaceURI !== null) {
+						$element->removeAttributeNS($attribute->namespaceURI, $attribute->localName);
+						continue;
+					}
+
+					$element->removeAttribute($attribute->name);
+				}
+			}
+		}
+
+		protected function is_allowed_provider_icon_svg_attribute(DOMAttr $attribute): bool
+		{
+			$name = strtolower($attribute->localName);
+			$value = (string) $attribute->value;
+
+			// Every event handler attribute.
+			if (strpos($name, 'on') === 0) {
+				return false;
+			}
+
+			// References may only point inside the same document (gradients, clip paths).
+			if ($name === 'href' || $name === 'xlink:href') {
+				return strncmp(ltrim($value), '#', 1) === 0;
+			}
+
+			// Entity- and whitespace-obfuscated scheme tricks, e.g. "java\nscript:".
+			$collapsed = strtolower(preg_replace('/[\s\x00-\x20]+/', '', $value));
+
+			if (strpos($collapsed, 'javascript:') !== false
+				|| strpos($collapsed, 'vbscript:') !== false
+				|| strpos($collapsed, 'data:text/html') !== false) {
+				return false;
+			}
+
+			if ($name === 'style' && preg_match('/@import|url\s*\(|expression\s*\(|-moz-binding/i', $value)) {
+				return false;
+			}
+
+			return true;
 		}
 
 		public function handle_provider_icon_proxy()
@@ -840,53 +1090,27 @@ function paymenthood_init_gateway_class()
 				exit;
 			}
 
-			$cache_key = 'paymenthood_icon_proxy_' . md5($icon_url);
-			$cached = get_transient($cache_key);
+			$icon = $this->fetch_provider_icon($icon_url);
 
-			if (is_array($cached) && !empty($cached['content_type']) && isset($cached['body'])) {
-				status_header(200);
-				header('Content-Type: ' . $cached['content_type']);
-				header('Cache-Control: public, max-age=21600');
-				echo base64_decode( $cached['body'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped,WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Binary image data proxied from CDN; HTML escaping would corrupt it.
-				exit;
-			}
-
-			$response = wp_remote_get(
-				$icon_url,
-				array(
-					'timeout' => 20,
-					'redirection' => 3,
-				)
-			);
-
-			$status_code = wp_remote_retrieve_response_code($response);
-			$body = wp_remote_retrieve_body($response);
-			$content_type = (string) wp_remote_retrieve_header($response, 'content-type');
-
-			if (is_wp_error($response) || $status_code !== 200 || $body === '') {
-				$this->log('Provider icon proxy request failed', 'warning', array(
-					'icon_url' => $icon_url,
-					'status_code' => $status_code,
-					'error' => is_wp_error($response) ? $response->get_error_message() : '',
-				));
+			if ($icon === null) {
 				status_header(404);
 				exit;
 			}
 
-			$content_type = $this->detect_provider_icon_content_type($icon_url, $content_type, $body);
-			set_transient(
-				$cache_key,
-				array(
-					'content_type' => $content_type,
-					'body' => base64_encode($body),
-				),
-				6 * HOUR_IN_SECONDS
-			);
-
 			status_header(200);
-			header('Content-Type: ' . $content_type);
+			header('Content-Type: ' . $icon['content_type']);
+			header('Content-Length: ' . strlen($icon['body']));
+			// Last line of defence. This response is served from the merchant's own
+			// origin, so if anything scriptable ever survived the checks above, `sandbox`
+			// still drops the document into an opaque origin with scripting disabled: no
+			// access to the shop's cookies, session or checkout DOM.
+			header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox");
+			header('X-Content-Type-Options: nosniff');
+			header('Content-Disposition: inline');
+			header('Cross-Origin-Resource-Policy: same-site');
+			header('Referrer-Policy: no-referrer');
 			header('Cache-Control: public, max-age=21600');
-			echo $body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary image data from wp_remote_get; HTML escaping would corrupt it.
+			echo $icon['body']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary image data validated by fetch_provider_icon(); HTML escaping would corrupt it.
 			exit;
 		}
 
