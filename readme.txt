@@ -32,6 +32,10 @@ PaymentHood is a multi-provider payment gateway for WooCommerce that lets mercha
 4. Enter your PaymentHood License ID and Authorization Code, then save. The plugin will automatically retrieve your API credentials.
 5. Configure sandbox or live mode and complete the webhook setup.
 
+For a complete, step-by-step setup guide with screenshots, see the official PaymentHood for WooCommerce integration guide:
+
+https://www.paymenthood.com/integrations/woocommerce/
+
 == Frequently Asked Questions ==
 
 = Does PaymentHood support partial refunds? =
@@ -59,7 +63,7 @@ This plugin connects to the PaymentHood payment platform (https://www.paymenthoo
 * Refund amount and order ID — sent when a refund is requested.
 * Provider icon images — fetched from PaymentHood's CDN and proxied through your server for display in the checkout and admin settings.
 
-No customer personal data (names, addresses, card numbers) is transmitted directly by this plugin; customers are redirected to PaymentHood's hosted checkout page where payment details are entered and processed entirely by PaymentHood.
+No customer personal data (names, addresses, card numbers) is transmitted by this plugin. Customers are redirected to PaymentHood's hosted checkout page, where card details are collected by the payment provider you selected, inside that provider's own certified environment. PaymentHood receives the provider-issued token and payment metadata only, never raw card credentials.
 
 By using this plugin you agree to PaymentHood's Terms of Service and Privacy Policy:
 
